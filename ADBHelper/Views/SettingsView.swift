@@ -13,7 +13,6 @@ struct SettingsView: View {
                     aboutCard
                     quickCommandsCard
                     dataCard
-                    boundaryCard
                 }
                 .padding(16)
             }
@@ -184,19 +183,6 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(AppTheme.danger)
-        }
-        .appCard()
-    }
-
-    private var boundaryCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("功能边界", systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.orange)
-            Text("未越狱 iOS 无法访问 USB 硬件，因此不支持 USB ADB、Fastboot 刷机、scrcpy 实时投屏和无线调试配对码配对。本应用支持的是局域网无线 ADB（TCP 5555）。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .appCard()
     }

@@ -68,6 +68,27 @@ struct ConnectionView: View {
         InfoKey(title: "安卓版本", key: "ro.build.version.release", icon: "square.stack.3d.up"),
         InfoKey(title: "SDK", key: "ro.build.version.sdk", icon: "chevron.left.forwardslash.chevron.right"),
         InfoKey(title: "序列号", key: "ro.serialno", icon: "number"),
+        InfoKey(title: "制造商", key: "ro.product.manufacturer", icon: "building.2.fill"),
+        InfoKey(title: "产品代号", key: "ro.product.name", icon: "app.badge"),
+        InfoKey(title: "主板", key: "ro.product.board", icon: "rectangle.stack"),
+        InfoKey(title: "硬件平台", key: "ro.board.platform", icon: "cpu"),
+        InfoKey(title: "CPU 架构", key: "ro.product.cpu.abilist", icon: "cpu.fill"),
+        InfoKey(title: "编译 ID", key: "ro.build.id", icon: "number.circle"),
+        InfoKey(title: "编译类型", key: "ro.build.type", icon: "gearshape"),
+        InfoKey(title: "编译标签", key: "ro.build.tags", icon: "tag.fill"),
+        InfoKey(title: "编译日期", key: "ro.build.date", icon: "calendar"),
+        InfoKey(title: "增量版本", key: "ro.build.version.incremental", icon: "number.circle.fill"),
+        InfoKey(title: "安全补丁", key: "ro.build.version.security_patch", icon: "shield.fill"),
+        InfoKey(title: "系统代号", key: "ro.build.version.codename", icon: "square.stack.3d.up.fill"),
+        InfoKey(title: "基带版本", key: "ro.build.version.baseband", icon: "antenna.radiowaves.left.and.right"),
+        InfoKey(title: "Bootloader", key: "ro.bootloader", icon: "lock.rectangle"),
+        InfoKey(title: "当前活动槽", key: "ro.boot.slot_suffix", icon: "rectangle.3.group"),
+        InfoKey(title: "A/B 分区", key: "ro.build.ab_update", icon: "square.on.square"),
+        InfoKey(title: "启动验证", key: "adbhelper.bootstate", icon: "checkmark.shield.fill"),
+        InfoKey(title: "屏幕密度", key: "ro.sf.lcd_density", icon: "viewfinder"),
+        InfoKey(title: "内核版本", key: "adbhelper.kernel", icon: "gearshape.2"),
+        InfoKey(title: "SELinux", key: "adbhelper.selinux", icon: "lock.fill"),
+        InfoKey(title: "存储用量", key: "adbhelper.storage", icon: "internaldrive"),
     ]
 
     private let quickControls: [(String, String, String)] = [
@@ -238,7 +259,7 @@ struct ConnectionView: View {
                         .foregroundStyle(.secondary)
                         Text(model.deviceInfo[item.key] ?? "—")
                             .font(.footnote.weight(.semibold))
-                            .lineLimit(1)
+                            .lineLimit(2)
                             .textSelection(.enabled)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

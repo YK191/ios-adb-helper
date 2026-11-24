@@ -327,6 +327,44 @@ final class AdbDevice: ObservableObject {
                   let valueRange = Range(match.range(at: 2), in: line) else { continue }
             result[String(line[keyRange])] = String(line[valueRange])
         }
+
+        // Derived: verified boot state + bootloader lock flag
+        if let state = result["ro.boot.verifiedbootstate"], !state.isEmpty {
+            let flag = result["ro.boot.flash.locked"] ?? ""
+            let lockText = flag == "1" ? "已锁" : (flag == "0" ? "已解锁" : "")
+            result["adbhelper.bootstate"] = lockText.isEmpty ? state : "\(state) · \(lockText)"
+        }
+
+        // Extra read-only probes: kernel, SELinux, storage. Best effort so a
+        // single unsupported command never breaks the whole info screen.
+        let probe = "echo \"APH_KERNEL=$(uname -r 2>/dev/null)\"; "
+            + "echo \"APH_SELINUX=$(getenforce 2>/dev/null)\"; "
+            + "echo \"APH_STORAGE=$(df -h /data 2>/dev/null | tail -1)\""
+        if let extra = try? shellText(probe, timeout: 20) {
+            for raw in extra.split(whereSeparator: { $0.isNewline }) {
+                let line = String(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let eq = line.firstIndex(of: "=") else { continue }
+                let key = String(line[..<eq])
+                let value = String(line[line.index(after: eq)...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else { continue }
+                switch key {
+                case "APH_KERNEL":
+                    result["adbhelper.kernel"] = value
+                case "APH_SELINUX":
+                    result["adbhelper.selinux"] = value
+                case "APH_STORAGE":
+                    let columns = value.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+                    if columns.count >= 5 {
+                        result["adbhelper.storage"] = "\(columns[3]) / \(columns[1]) · \(columns[4])"
+                    } else {
+                        result["adbhelper.storage"] = value
+                    }
+                default:
+                    break
+                }
+            }
+        }
         return result
     }
 
