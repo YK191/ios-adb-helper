@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.4</string>
+    <string>1.1.5</string>
     <key>CFBundleVersion</key>
-    <string>6</string>
+    <string>7</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UILaunchScreen</key>
@@ -39,7 +39,7 @@
     <key>NSLocalNetworkUsageDescription</key>
     <string>用于连接同一局域网内已开启无线 ADB 的 Android 设备。</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>用于将设备截图保存到相册。</string>
+    <string>用于将设备截图与录像保存到相册。</string>
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>

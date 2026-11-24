@@ -377,9 +377,46 @@ struct ConnectionView: View {
                 elapsed = 0
                 switch result {
                 case .success(let url):
-                    model.notify("录像已保存到文件 App：\(url.lastPathComponent)")
+                    saveVideoToPhotos(url)
                 case .failure(let error):
                     model.notify("保存失败：\(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// 录像默认保存到系统相册；权限被拒或保存失败时把文件留在「文件」App 里，不丢数据。
+    private func saveVideoToPhotos(_ url: URL) {
+        let handleAuthorization: (@escaping (Bool) -> Void) -> Void = { done in
+            if #available(iOS 14, *) {
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                    done(status == .authorized || status == .limited)
+                }
+            } else {
+                PHPhotoLibrary.requestAuthorization { status in
+                    done(status == .authorized || status == .limited)
+                }
+            }
+        }
+
+        handleAuthorization { allowed in
+            guard allowed else {
+                DispatchQueue.main.async {
+                    model.notify("未获得相册权限，录像已保存在「文件」App")
+                }
+                return
+            }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            }) { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        // 相册里已有副本，删掉 App 内的临时文件，避免重复占用空间。
+                        try? FileManager.default.removeItem(at: url)
+                        model.notify("录像已保存到相册")
+                    } else {
+                        model.notify("保存到相册失败：\(error?.localizedDescription ?? "未知错误")，录像已保留在「文件」App")
+                    }
                 }
             }
         }

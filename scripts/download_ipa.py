@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Download the latest unsigned IPA from the private GitHub Release.
+"""Download the latest unsigned IPA from GitHub Releases.
 
 Usage:
     python3 scripts/download_ipa.py
     python3 scripts/download_ipa.py --out /path/to/ADBHelper.ipa
+    python3 scripts/download_ipa.py --repo someone/fork --tag v1.1.4-b25
 
 Credentials: uses GITHUB_TOKEN env var if set, otherwise the first
 github.com entry in ~/.git-credentials. Never writes the token to disk.
+Public repositories work without any credentials.
 """
 import argparse
 import json
@@ -15,7 +17,7 @@ import re
 import sys
 import urllib.request
 
-REPO = "YK191/ios-adb-helper"
+REPO = os.environ.get("ADB_REPO", "YK191/ios-adb-helper")
 ASSET = "ADBHelper.ipa"
 
 
@@ -35,24 +37,24 @@ def github_token():
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", default=REPO, help="owner/repo (default: %s)" % REPO)
     parser.add_argument("--tag", default=None, help="Release tag (default: latest release)")
     parser.add_argument("--out", default=ASSET, help="Output .ipa path")
     args = parser.parse_args()
 
-    token = github_token()
-    if not token:
-        print("ERROR: no GitHub token. Set GITHUB_TOKEN or configure ~/.git-credentials")
-        sys.exit(1)
-
     headers = {
-        "Authorization": "Bearer " + token,
         "Accept": "application/vnd.github+json",
-        "User-Agent": "workbuddy",
+        "User-Agent": "adb-helper-ios",
     }
+    token = github_token()
+    if token:
+        # Public repositories work anonymously; a token simply avoids rate limits.
+        headers["Authorization"] = "Bearer " + token
+
     if args.tag:
-        url = "https://api.github.com/repos/%s/releases/tags/%s" % (REPO, args.tag)
+        url = "https://api.github.com/repos/%s/releases/tags/%s" % (args.repo, args.tag)
     else:
-        url = "https://api.github.com/repos/%s/releases/latest" % REPO
+        url = "https://api.github.com/repos/%s/releases/latest" % args.repo
     with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
         release = json.load(response)
     print("release: %s (%s)" % (release["tag_name"], release["name"]))

@@ -151,7 +151,7 @@ def device():
     d.ellipse((295, 148, 301, 154), fill=(47, 191, 113))
     text(d, (328, 152), "已连接", 10, (47, 191, 113), True, "mm")
     d.rounded_rectangle((30, 192, 360, 225), radius=10, fill=(247, 250, 252), outline=BORDER)
-    text(d, (42, 208), "192.168.1.20", 12, TEXT, False, "lm")
+    text(d, (42, 208), "192.168.1.100", 12, TEXT, False, "lm")
     text(d, (310, 208), ": 5555", 12, SUB, False, "lm")
     d.rounded_rectangle((30, 232, 200, 258), radius=13, fill=MINT)
     text(d, (115, 245), "已连接", 11, (255, 255, 255), True, "mm")
@@ -159,9 +159,9 @@ def device():
     text(d, (245, 245), "断开", 11, SUB, True, "mm")
 
     shadow_card(d, (16, 280, 374, 444))
-    section(d, 294, "设备信息", "已连接 192.168.1.20:5555", BLUE, "link")
-    items = [("型号", "D01"), ("品牌", "XPENG"), ("设备名", "Mona03"),
-             ("安卓版本", "11"), ("SDK", "30"), ("序列号", "7b388e10")]
+    section(d, 294, "设备信息", "已连接 192.168.1.100:5555", BLUE, "link")
+    items = [("型号", "Pixel 7"), ("品牌", "Google"), ("设备名", "Pixel 7"),
+             ("安卓版本", "14"), ("SDK", "34"), ("序列号", "1A2B3C4D")]
     for i, (k, v) in enumerate(items):
         x = 30 + (i % 2) * 168
         y = 336 + (i // 2) * 34
@@ -170,7 +170,7 @@ def device():
         text(d, (x + 8, y + 16), v, 11, TEXT, True)
 
     shadow_card(d, (16, 458, 374, 556))
-    section(d, 470, "截图与录像", "可随时停止 · 无声音", DANGER, "display")
+    section(d, 470, "截图与录像", "可随时停止 · 自动存相册", DANGER, "display")
     d.rounded_rectangle((30, 510, 112, 540), radius=13, fill=(231, 249, 245))
     text(d, (71, 525), "截图", 11, MINT, True, "mm")
     d.rounded_rectangle((122, 510, 204, 540), radius=13, fill=(231, 249, 245))
@@ -251,18 +251,14 @@ def apps():
     d.ellipse((30, 126, 38, 134), outline=SUB, width=2)
     d.line((37, 133, 44, 140), fill=SUB, width=2)
     text(d, (54, 131), "搜索包名", 12, SUB)
-    d.rounded_rectangle((16, 158, 194, 188), radius=14, fill=(255, 255, 255), outline=BORDER)
-    text(d, (105, 173), "用户应用", 12, TEXT, True, "mm")
-    d.rounded_rectangle((196, 158, 374, 188), radius=14, fill=(240, 246, 249))
-    text(d, (285, 173), "系统应用", 12, SUB, False, "mm")
     apps_list = [
         ("微信", "com.tencent.mm", (76, 191, 96)),
         ("高德地图", "com.autonavi.minimap", (58, 143, 236)),
-        ("ADB 助手", "com.reathin.adbhelper", (52, 216, 190)),
+        ("ADB 助手", "com.adbhelper.ios", (52, 216, 190)),
         ("设置", "com.android.settings", (130, 145, 160)),
         ("浏览器", "com.android.browser", (255, 169, 90)),
     ]
-    y = 202
+    y = 158
     for name, pkg, color in apps_list:
         d.rounded_rectangle((16, y, 374, y + 82), radius=16, fill=(255, 255, 255), outline=BORDER)
         d.rounded_rectangle((30, y + 16, 66, y + 52), radius=12, fill=color)
