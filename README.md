@@ -40,11 +40,10 @@
 
 本项目使用 GitHub Actions 的 macOS 云主机编译，**你只需要一个 GitHub 账号**。
 
-1. 注册/登录 GitHub，新建一个 **Public** 仓库（私有仓库每月也有免费额度，但公开仓库最省心）。
-2. 把本目录所有文件上传到仓库根目录（包括隐藏的 `.github/workflows/build.yml`）。
-   - 网页上传时忽略 `.github` 文件夹也没关系，可改用 GitHub Desktop 上传完整目录。
-3. 打开仓库 → `Actions` → 找到 `Build iOS ADB Helper IPA` → 点击 `Run workflow`（或 push 代码自动触发）。
-4. 等待编译完成（一般几分钟），在本次运行的Artifacts里下载 `ADBHelper-unsigned-IPA` ZIP，解压得到 `ADBHelper.ipa`。
+- 私有仓库已建好：**https://github.com/YK191/ios-adb-helper**（main 分支，工程已全部推送）。
+- 云端编译已验证成功：Actions 运行 `Build iOS ADB Helper IPA` 会产出 `ADBHelper-unsigned-IPA` Artifact，解压得到 `ADBHelper.ipa`。
+- 后续改代码后 push 到 main 会自动重新编译。也可以到仓库 `Actions` 页面手动 `Run workflow`。
+- 在 Actions 运行详情页底部的 `Artifacts` 区域下载 ZIP（需要登录 GitHub）。
 
 这就是**未签名 IPA**，下一步在 Windows 上用免费 Apple ID 签名安装。
 
@@ -73,7 +72,7 @@ iOS 不认真正意义上的「自签名证书」，所谓自签通常是**用�
 
 - 本工程内置一把 ADB RSA 私钥（`ADBHelper/AdbKeyData.swift`）。任何拿到这把密钥的人，只要你的 Android 设备曾授权过它，就能通过 Wi-Fi 连接你的设备。若介意，可运行 `python3 scripts/gen_adb_key.py` 重新生成密钥并重新编译，之后需要在每台 Android 设备上重新授权。
 - 本应用应在合法设备、获得机主明确授权的前提下使用。
-- 我没有 macOS 环境，无法在本地编译验证；工程已按 Xcode 16 / iOS 16 SDK 配置，编译产物由云端 Actions 生成。如果 Actions 报编译错误，把日志贴回来我可以继续修。
+- 本机没有 macOS/Swift 编译器，未经本地编译；云端 GitHub Actions（macOS）已完成一次成功编译，编译错误已修复。若以后改代码后 Actions 报错，把日志贴回来即可继续修。
 
 ## 目录结构
 
