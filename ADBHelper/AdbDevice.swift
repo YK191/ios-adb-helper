@@ -336,6 +336,31 @@ final class AdbDevice: ObservableObject {
         }, completion: completion)
     }
 
+    /// Record the Android screen with the built-in `screenrecord` command,
+    /// then pull the MP4 into the app's Documents directory (visible in Files).
+    func recordScreen(seconds: Int, completion: @escaping (Result<URL, Error>) -> Void) {
+        let duration = min(max(seconds, 3), 180)
+        let name = "adbhelper-\(Int(Date().timeIntervalSince1970)).mp4"
+        let remote = "/sdcard/\(name)"
+        perform({
+            _ = try self.shellText(
+                "screenrecord --time-limit \(duration) \(remote)",
+                timeout: Double(duration) + 45
+            )
+            let data = try self.pullFileSync(remote)
+            let directory = try FileManager.default.url(
+                for: .documentDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            let destination = directory.appendingPathComponent(name)
+            try data.write(to: destination, options: .atomic)
+            try? self.shellText("rm -f \(remote)")
+            return destination
+        }, completion: completion)
+    }
+
     func listPackages(system: Bool, completion: @escaping (Result<[AppInfo], Error>) -> Void) {
         perform({
             let flag = system ? "-s" : "-3"

@@ -49,6 +49,9 @@ struct ConnectionView: View {
     @State private var brightness = "128"
     @State private var density = "480"
     @State private var resolution = ""
+    @State private var recordSeconds = 30
+    @State private var isRecording = false
+    @State private var recordRemaining = 0
 
     private struct InfoKey: Identifiable {
         let title: String
@@ -84,6 +87,7 @@ struct ConnectionView: View {
                     if model.isConnected {
                         infoCard
                         controlsCard
+                        captureCard
                         displayCard
                         rebootCard
                     }
@@ -267,6 +271,61 @@ struct ConnectionView: View {
         .appCard()
     }
 
+    private var captureCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(
+                title: "截图与录像",
+                systemImage: "video.fill",
+                subtitle: "录像使用 Android screenrecord · 最长 180 秒 · 无声音",
+                tint: AppTheme.danger
+            )
+
+            HStack(spacing: 10) {
+                Button {
+                    takeScreenshot()
+                } label: {
+                    Label("截取屏幕", systemImage: "camera.fill")
+                }
+                .buttonStyle(GradientButtonStyle())
+
+                Spacer(minLength: 0)
+
+                if isRecording {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                        Text("录制中 \(recordRemaining)s")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.danger)
+                    }
+                }
+            }
+
+            HStack(spacing: 10) {
+                Text("录像时长")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Picker("时长", selection: $recordSeconds) {
+                    ForEach([15, 30, 60, 180], id: \.self) { second in
+                        Text("\(second) 秒").tag(second)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(isRecording)
+            }
+
+            Button {
+                startRecording()
+            } label: {
+                Label(isRecording ? "正在录制…" : "开始录像并保存到文件 App", systemImage: isRecording ? "square.fill" : "video.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(AppTheme.danger)
+            .disabled(isRecording)
+        }
+        .appCard()
+    }
+
     private var displayCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "屏幕与显示", systemImage: "display", subtitle: "即时生效，可一键恢复", tint: AppTheme.blue)
@@ -344,6 +403,33 @@ struct ConnectionView: View {
                 .textFieldStyle(.plain)
             Button("设置", action: action)
                 .buttonStyle(SoftButtonStyle())
+        }
+    }
+
+    private func startRecording() {
+        guard model.ensureConnected() else { return }
+        isRecording = true
+        recordRemaining = recordSeconds
+        model.device.recordScreen(seconds: recordSeconds) { result in
+            DispatchQueue.main.async {
+                isRecording = false
+                recordRemaining = 0
+                switch result {
+                case .success(let url):
+                    model.notify("录像已保存到文件 App：\(url.lastPathComponent)")
+                case .failure(let error):
+                    model.notify("录制失败：\(error.localizedDescription)")
+                }
+            }
+        }
+        countdown()
+    }
+
+    private func countdown() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
+            guard isRecording, recordRemaining > 0 else { return }
+            recordRemaining -= 1
+            countdown()
         }
     }
 
