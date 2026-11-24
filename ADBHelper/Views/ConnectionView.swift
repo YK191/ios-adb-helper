@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 import Photos
 import UIKit
 
@@ -49,9 +50,10 @@ struct ConnectionView: View {
     @State private var brightness = "128"
     @State private var density = "480"
     @State private var resolution = ""
-    @State private var recordSeconds = 30
-    @State private var isRecording = false
-    @State private var recordRemaining = 0
+    @State private var recordSeconds = 60
+    @State private var recording: ScreenRecording?
+    @State private var elapsed = 0
+    @State private var isStopping = false
 
     private struct InfoKey: Identifiable {
         let title: String
@@ -276,7 +278,7 @@ struct ConnectionView: View {
             SectionHeader(
                 title: "截图与录像",
                 systemImage: "video.fill",
-                subtitle: "录像使用 Android screenrecord · 最长 180 秒 · 无声音",
+                subtitle: "可随时停止 · 到时长自动结束 · 无声音",
                 tint: AppTheme.danger
             )
 
@@ -290,18 +292,20 @@ struct ConnectionView: View {
 
                 Spacer(minLength: 0)
 
-                if isRecording {
+                if recording != nil {
                     HStack(spacing: 6) {
-                        ProgressView()
-                        Text("录制中 \(recordRemaining)s")
-                            .font(.caption.weight(.semibold))
+                        Circle()
+                            .fill(AppTheme.danger)
+                            .frame(width: 8, height: 8)
+                        Text(timeString(elapsed))
+                            .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(AppTheme.danger)
                     }
                 }
             }
 
             HStack(spacing: 10) {
-                Text("录像时长")
+                Text("最长时长")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                 Picker("时长", selection: $recordSeconds) {
@@ -310,18 +314,28 @@ struct ConnectionView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .disabled(isRecording)
+                .disabled(recording != nil)
             }
 
-            Button {
-                startRecording()
-            } label: {
-                Label(isRecording ? "正在录制…" : "开始录像并保存到文件 App", systemImage: isRecording ? "square.fill" : "video.fill")
-                    .frame(maxWidth: .infinity)
+            if let activeRecording = recording {
+                Button {
+                    stopRecording(activeRecording)
+                } label: {
+                    Label(isStopping ? "正在保存…" : "停止录像并保存", systemImage: "square.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.danger)
+                .disabled(isStopping)
+            } else {
+                Button {
+                    startRecording()
+                } label: {
+                    Label("开始录像", systemImage: "video.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GradientButtonStyle())
             }
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.danger)
-            .disabled(isRecording)
         }
         .appCard()
     }
@@ -408,29 +422,54 @@ struct ConnectionView: View {
 
     private func startRecording() {
         guard model.ensureConnected() else { return }
-        isRecording = true
-        recordRemaining = recordSeconds
-        model.device.recordScreen(seconds: recordSeconds) { result in
+        isStopping = false
+        model.device.startScreenRecording { [self] result in
             DispatchQueue.main.async {
-                isRecording = false
-                recordRemaining = 0
                 switch result {
-                case .success(let url):
-                    model.notify("录像已保存到文件 App：\(url.lastPathComponent)")
+                case .success(let session):
+                    recording = session
+                    elapsed = 0
+                    model.notify("已开始录像，可随时点击停止")
+                    tickRecording()
                 case .failure(let error):
                     model.notify("录制失败：\(error.localizedDescription)")
                 }
             }
         }
-        countdown()
     }
 
-    private func countdown() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
-            guard isRecording, recordRemaining > 0 else { return }
-            recordRemaining -= 1
-            countdown()
+    private func stopRecording(_ session: ScreenRecording) {
+        guard !isStopping else { return }
+        isStopping = true
+        model.device.stopScreenRecording(session) { [self] result in
+            DispatchQueue.main.async {
+                isStopping = false
+                recording = nil
+                elapsed = 0
+                switch result {
+                case .success(let url):
+                    model.notify("录像已保存到文件 App：\(url.lastPathComponent)")
+                case .failure(let error):
+                    model.notify("保存失败：\(error.localizedDescription)")
+                }
+            }
         }
+    }
+
+    private func tickRecording() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
+            guard recording != nil else { return }
+            elapsed += 1
+            if elapsed >= recordSeconds {
+                if let current = recording { stopRecording(current) }
+                return
+            }
+            tickRecording()
+        }
+    }
+
+    private func timeString(_ seconds: Int) -> String {
+        String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 
     private func takeScreenshot() {

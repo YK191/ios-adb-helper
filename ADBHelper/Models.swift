@@ -22,6 +22,13 @@ struct ConnectionRecord: Codable, Identifiable, Hashable {
     var id: String { "\(host):\(port)" }
 }
 
+struct ScreenRecording: Identifiable {
+    let id = UUID()
+    let pid: Int
+    let remotePath: String
+    let startedAt: Date
+}
+
 struct QuickCommand: Codable, Identifiable, Hashable {
     var id: UUID
     var name: String

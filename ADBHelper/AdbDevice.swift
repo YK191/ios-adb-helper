@@ -336,27 +336,50 @@ final class AdbDevice: ObservableObject {
         }, completion: completion)
     }
 
-    /// Record the Android screen with the built-in `screenrecord` command,
-    /// then pull the MP4 into the app's Documents directory (visible in Files).
-    func recordScreen(seconds: Int, completion: @escaping (Result<URL, Error>) -> Void) {
-        let duration = min(max(seconds, 3), 180)
+    /// Start `screenrecord` as a background process and return its PID so the
+    /// recording can be stopped at any time with SIGINT.
+    func startScreenRecording(completion: @escaping (Result<ScreenRecording, Error>) -> Void) {
         let name = "adbhelper-\(Int(Date().timeIntervalSince1970)).mp4"
         let remote = "/sdcard/\(name)"
         perform({
-            _ = try self.shellText(
-                "screenrecord --time-limit \(duration) \(remote)",
-                timeout: Double(duration) + 45
-            )
-            let data = try self.pullFileSync(remote)
+            let text = try self.shellText("screenrecord \(remote) >/dev/null 2>&1 & echo $!", timeout: 15)
+            let lines = text.split(whereSeparator: { $0.isNewline }).map {
+                String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard let pidLine = lines.last(where: { !$0.isEmpty }), let pid = Int(pidLine), pid > 0 else {
+                throw AdbError.device("无法启动录像进程，设备可能不支持 screenrecord")
+            }
+            Thread.sleep(forTimeInterval: 0.4)
+            let alive = try? self.shellText("kill -0 \(pid) 2>/dev/null && echo alive || echo gone")
+            guard alive?.contains("alive") == true else {
+                throw AdbError.device("screenrecord 启动失败，设备可能不支持录像或没有存储空间")
+            }
+            return ScreenRecording(pid: pid, remotePath: remote, startedAt: Date())
+        }, completion: completion)
+    }
+
+    /// Stop a recording gracefully, wait for the MP4 to be finalized, then
+    /// pull it into the app's Documents directory (visible in Files).
+    func stopScreenRecording(_ recording: ScreenRecording, completion: @escaping (Result<URL, Error>) -> Void) {
+        perform({
+            _ = try? self.shellText("kill -INT \(recording.pid)")
+            let deadline = Date().addingTimeInterval(12)
+            while Date() < deadline {
+                let state = try? self.shellText("kill -0 \(recording.pid) 2>/dev/null && echo alive || echo gone")
+                if state?.contains("gone") == true { break }
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            let data = try self.pullFileSync(recording.remotePath)
             let directory = try FileManager.default.url(
                 for: .documentDirectory,
                 in: .userDomainMask,
                 appropriateFor: nil,
                 create: true
             )
+            let name = (recording.remotePath as NSString).lastPathComponent
             let destination = directory.appendingPathComponent(name)
             try data.write(to: destination, options: .atomic)
-            try? self.shellText("rm -f \(remote)")
+            try? self.shellText("rm -f \(recording.remotePath)")
             return destination
         }, completion: completion)
     }
