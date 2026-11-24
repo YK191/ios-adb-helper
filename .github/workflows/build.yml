@@ -50,22 +50,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="v1.0.0"
-          TITLE="ADB Helper 1.0.0 · build ${{ github.run_number }}"
+          VERSION=$(plutil -extract CFBundleShortVersionString raw -o - ADBHelper/Info.plist)
+          BUILD_NUM=${{ github.run_number }}
+          TAG="v${VERSION}-b${BUILD_NUM}"
+          TITLE="ADB Helper ${VERSION} · build ${BUILD_NUM}"
           NOTES=$(cat <<EOF
           未签名 IPA，供 Sideloadly / AltStore 等工具用个人 Apple ID 签名安装。
 
-          - 版本：1.0.0（构建 #${{ github.run_number }}）
+          - 版本：${VERSION}（构建 #${BUILD_NUM}）
           - 提交：${{ github.sha }}
-          - 功能：无线 ADB 连接、Shell、设备控制、应用/文件管理、截图、日志
+          - 功能：无线 ADB 连接、Shell、设备信息、应用/文件管理、截图与录像
           - 注意：免费 Apple ID 签名有效期 7 天，到期需重新签名。
           EOF
           )
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES"
-            gh release upload "$TAG" build/ADBHelper.ipa --clobber
-          else
-            gh release create "$TAG" build/ADBHelper.ipa \
-              --title "$TITLE" --notes "$NOTES" --latest
-          fi
+          gh release create "$TAG" build/ADBHelper.ipa \
+            --title "$TITLE" --notes "$NOTES" --latest
           echo "Release: https://github.com/${{ github.repository }}/releases/tag/$TAG"

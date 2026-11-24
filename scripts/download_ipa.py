@@ -35,7 +35,7 @@ def github_token():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--tag", default="v1.0.0", help="Release tag")
+    parser.add_argument("--tag", default=None, help="Release tag (default: latest release)")
     parser.add_argument("--out", default=ASSET, help="Output .ipa path")
     args = parser.parse_args()
 
@@ -49,9 +49,13 @@ def main():
         "Accept": "application/vnd.github+json",
         "User-Agent": "workbuddy",
     }
-    url = "https://api.github.com/repos/%s/releases/tags/%s" % (REPO, args.tag)
+    if args.tag:
+        url = "https://api.github.com/repos/%s/releases/tags/%s" % (REPO, args.tag)
+    else:
+        url = "https://api.github.com/repos/%s/releases/latest" % REPO
     with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as response:
         release = json.load(response)
+    print("release: %s (%s)" % (release["tag_name"], release["name"]))
 
     asset = next((a for a in release["assets"] if a["name"] == ASSET), None)
     if asset is None:
