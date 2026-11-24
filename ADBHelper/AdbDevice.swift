@@ -99,6 +99,8 @@ final class AdbDevice: ObservableObject {
         queue.async {
             do {
                 let banner = try self.connectSync(host: host, port: port)
+                // 清理旧版本或异常退出可能遗留在设备上的录像临时文件。
+                try? self.shellText("rm -f /data/local/tmp/adbhelper-*.mp4 /sdcard/adbhelper-*.mp4", timeout: 10)
                 DispatchQueue.main.async {
                     self.isConnected = true
                     self.status = "已连接 \(host):\(port)"
@@ -339,19 +341,22 @@ final class AdbDevice: ObservableObject {
     /// Start `screenrecord` as a background process and return its PID so the
     /// recording can be stopped at any time with SIGINT.
     func startScreenRecording(completion: @escaping (Result<ScreenRecording, Error>) -> Void) {
+        // 临时文件放在 /data/local/tmp（不进入相册/媒体库），停止后一定会清理。
         let name = "adbhelper-\(Int(Date().timeIntervalSince1970)).mp4"
-        let remote = "/sdcard/\(name)"
+        let remote = "/data/local/tmp/\(name)"
         perform({
             let text = try self.shellText("screenrecord \(remote) >/dev/null 2>&1 & echo $!", timeout: 15)
             let lines = text.split(whereSeparator: { $0.isNewline }).map {
                 String($0).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             guard let pidLine = lines.last(where: { !$0.isEmpty }), let pid = Int(pidLine), pid > 0 else {
+                try? self.shellText("rm -f \(remote)")
                 throw AdbError.device("无法启动录像进程，设备可能不支持 screenrecord")
             }
             Thread.sleep(forTimeInterval: 0.4)
             let alive = try? self.shellText("kill -0 \(pid) 2>/dev/null && echo alive || echo gone")
             guard alive?.contains("alive") == true else {
+                try? self.shellText("kill -9 \(pid) 2>/dev/null; rm -f \(remote)")
                 throw AdbError.device("screenrecord 启动失败，设备可能不支持录像或没有存储空间")
             }
             return ScreenRecording(pid: pid, remotePath: remote, startedAt: Date())
@@ -362,6 +367,8 @@ final class AdbDevice: ObservableObject {
     /// pull it into the app's Documents directory (visible in Files).
     func stopScreenRecording(_ recording: ScreenRecording, completion: @escaping (Result<URL, Error>) -> Void) {
         perform({
+            // 无论拉取或写入是否失败，都尽力删掉设备端临时文件。
+            defer { try? self.shellText("rm -f \(recording.remotePath)") }
             _ = try? self.shellText("kill -INT \(recording.pid)")
             let deadline = Date().addingTimeInterval(12)
             while Date() < deadline {
@@ -379,7 +386,6 @@ final class AdbDevice: ObservableObject {
             let name = (recording.remotePath as NSString).lastPathComponent
             let destination = directory.appendingPathComponent(name)
             try data.write(to: destination, options: .atomic)
-            try? self.shellText("rm -f \(recording.remotePath)")
             return destination
         }, completion: completion)
     }

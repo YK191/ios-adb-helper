@@ -72,7 +72,8 @@ iOS 不认真正意义上的「自签名证书」，所谓自签通常是**用�
 ## 四、重要说明
 
 - 本工程内置一把 ADB RSA 私钥（`ADBHelper/AdbKeyData.swift`）。任何拿到这把密钥的人，只要你的 Android 设备曾授权过它，就能通过 Wi-Fi 连接你的设备。若介意，可运行 `python3 scripts/gen_adb_key.py` 重新生成密钥并重新编译，之后需要在每台 Android 设备上重新授权。
-- 录像使用 Android 自带的 `screenrecord`，以后台进程启动并保存 PID，点「停止录像并保存」即发送 `SIGINT` 正常结束并拉取文件；也可设置最长时长自动停止。录像**不含声音**，部分机型/模拟器可能不支持。
+- 截图通过 `exec-out screencap -p` 直接把 PNG 数据流传回 iPhone，**不会在被控设备写入任何文件**。
+- 录像使用 Android 自带的 `screenrecord`，以后台进程启动并保存 PID，点「停止录像并保存」即发送 `SIGINT` 正常结束并拉取文件；也可设置最长时长自动停止。录像**不含声音**，部分机型/模拟器可能不支持。`screenrecord` 必须先把 MP4 写到设备临时目录，本应用使用 `/data/local/tmp/adbhelper-*.mp4`（不进入相册/媒体库），拉取后立即删除；即使拉取失败也会尽力清理，下次连接时还会自动清理此前的残留文件。
 - 本应用应在合法设备、获得机主明确授权的前提下使用。
 - 本机没有 macOS/Swift 编译器，未经本地编译；云端 GitHub Actions（macOS）已完成一次成功编译，编译错误已修复。若以后改代码后 Actions 报错，把日志贴回来即可继续修。
 
