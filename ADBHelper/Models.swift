@@ -13,6 +13,7 @@ struct RemoteFile: Identifiable, Hashable {
 
 struct AppInfo: Identifiable, Hashable {
     let packageName: String
+    var label: String?
     var id: String { packageName }
 }
 
@@ -26,6 +27,7 @@ struct ScreenRecording: Identifiable {
     let id = UUID()
     let pid: Int
     let remotePath: String
+    let logPath: String
     let startedAt: Date
 }
 

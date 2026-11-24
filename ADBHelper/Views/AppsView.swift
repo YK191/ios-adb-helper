@@ -10,6 +10,7 @@ struct AppsView: View {
     @State private var showImporter = false
     @State private var showInstallTip = false
     @State private var isLoading = false
+    @State private var installProgress: Double? = nil
 
     private var filtered: [AppInfo] {
         let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
@@ -97,9 +98,13 @@ struct AppsView: View {
                     showImporter = false
                     model.notify("已选择 \(url.lastPathComponent)")
                     let didAccess = url.startAccessingSecurityScopedResource()
-                    model.device.installApk(from: url) { installResult in
+                    installProgress = 0
+                    model.device.installApk(from: url, progress: { value in
+                        DispatchQueue.main.async { installProgress = value }
+                    }) { installResult in
                         if didAccess { url.stopAccessingSecurityScopedResource() }
                         DispatchQueue.main.async {
+                            installProgress = nil
                             switch installResult {
                             case .success:
                                 model.notify("安装完成")
@@ -108,6 +113,23 @@ struct AppsView: View {
                                 model.notify(error.localizedDescription)
                             }
                         }
+                    }
+                }
+            }
+            .overlay {
+                if let progress = installProgress {
+                    ZStack {
+                        Color.black.opacity(0.45).ignoresSafeArea()
+                        VStack(spacing: 14) {
+                            ProgressView(value: progress)
+                                .progressViewStyle(.linear)
+                                .frame(width: 220)
+                            Text(progress < 0.9 ? "正在传输安装文件… \(Int(progress / 0.9 * 100))%" : "正在安装应用…")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                        }
+                        .padding(24)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                 }
             }
@@ -161,9 +183,12 @@ struct AppsView: View {
                     .font(.footlineWeight())
                     .textSelection(.enabled)
                     .lineLimit(1)
-                Text(showSystem ? "系统应用" : "用户应用")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                if let label = app.label, !label.isEmpty {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")

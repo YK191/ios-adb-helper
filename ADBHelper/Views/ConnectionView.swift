@@ -50,6 +50,7 @@ struct ConnectionView: View {
     @State private var recording: ScreenRecording?
     @State private var elapsed = 0
     @State private var isStopping = false
+    @State private var isCapturing = false
 
     private struct InfoKey: Identifiable {
         let title: String
@@ -124,6 +125,13 @@ struct ConnectionView: View {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFit()
+                        } else if isCapturing {
+                            VStack(spacing: 12) {
+                                ProgressView().tint(AppTheme.mint)
+                                Text("正在截取屏幕…")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         } else {
                             Text("截图数据无法预览")
                                 .font(.footnote)
@@ -391,18 +399,22 @@ struct ConnectionView: View {
 
     private func takeScreenshot() {
         guard model.ensureConnected() else { return }
-        model.notify("正在截取屏幕…")
+        screenshot = nil
+        isCapturing = true
+        showScreenshot = true
         model.device.screenshot { result in
             DispatchQueue.main.async {
+                isCapturing = false
                 switch result {
                 case .success(let data):
                     guard let image = UIImage(data: data) else {
+                        showScreenshot = false
                         model.notify("截图数据无法解析（\(data.count) 字节）")
                         return
                     }
                     screenshot = image
-                    showScreenshot = true
                 case .failure(let error):
+                    showScreenshot = false
                     model.notify("截图失败：\(error.localizedDescription)")
                 }
             }
@@ -434,6 +446,7 @@ struct ConnectionView: View {
             PHAssetChangeRequest.creationRequestForAsset(from: image)
         }) { success, error in
             DispatchQueue.main.async {
+                showScreenshot = false
                 model.notify(success ? "截图已保存到相册" : "保存失败：\(error?.localizedDescription ?? "未知错误")")
             }
         }

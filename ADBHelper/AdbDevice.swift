@@ -413,22 +413,34 @@ final class AdbDevice: ObservableObject {
         // 临时文件放在 /data/local/tmp（不进入相册/媒体库），停止后一定会清理。
         let name = "adbhelper-\(Int(Date().timeIntervalSince1970)).mp4"
         let remote = "/data/local/tmp/\(name)"
+        let log = "/data/local/tmp/\(name).log"
         perform({
-            let text = try self.shellText("screenrecord \(remote) >/dev/null 2>&1 & echo $!", timeout: 15)
+            // Capture screenrecord's stderr so a failure can report the real
+            // device message instead of a generic "not supported" text.
+            let text = try self.shellText("screenrecord \(remote) >\(log) 2>&1 & echo $!", timeout: 15)
             let lines = text.split(whereSeparator: { $0.isNewline }).map {
                 String($0).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             guard let pidLine = lines.last(where: { !$0.isEmpty }), let pid = Int(pidLine), pid > 0 else {
-                try? self.shellText("rm -f \(remote)")
+                try? self.shellText("rm -f \(remote) \(log)")
                 throw AdbError.device("无法启动录像进程，设备可能不支持 screenrecord")
             }
-            Thread.sleep(forTimeInterval: 0.4)
-            let alive = try? self.shellText("kill -0 \(pid) 2>/dev/null && echo alive || echo gone")
-            guard alive?.contains("alive") == true else {
-                try? self.shellText("kill -9 \(pid) 2>/dev/null; rm -f \(remote)")
-                throw AdbError.device("screenrecord 启动失败，设备可能不支持录像或没有存储空间")
+            // Wait up to ~2s for the process to settle (some devices are slow).
+            var alive = false
+            for _ in 0..<8 {
+                if let state = try? self.shellText("kill -0 \(pid) 2>/dev/null && echo alive || echo gone"),
+                   state.contains("alive") { alive = true; break }
+                Thread.sleep(forTimeInterval: 0.25)
             }
-            return ScreenRecording(pid: pid, remotePath: remote, startedAt: Date())
+            if !alive {
+                let detail = (try? self.shellText("cat \(log) 2>/dev/null"))?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                try? self.shellText("kill -9 \(pid) 2>/dev/null; rm -f \(remote) \(log)")
+                throw AdbError.device(detail.isEmpty
+                    ? "screenrecord 进程退出，设备可能不支持录像或没有存储空间"
+                    : "screenrecord 启动失败：\(detail)")
+            }
+            return ScreenRecording(pid: pid, remotePath: remote, logPath: log, startedAt: Date())
         }, completion: completion)
     }
 
@@ -437,7 +449,7 @@ final class AdbDevice: ObservableObject {
     func stopScreenRecording(_ recording: ScreenRecording, completion: @escaping (Result<URL, Error>) -> Void) {
         perform({
             // 无论拉取或写入是否失败，都尽力删掉设备端临时文件。
-            defer { try? self.shellText("rm -f \(recording.remotePath)") }
+            defer { try? self.shellText("rm -f \(recording.remotePath) \(recording.logPath)") }
             _ = try? self.shellText("kill -INT \(recording.pid)")
             let deadline = Date().addingTimeInterval(12)
             while Date() < deadline {
@@ -463,11 +475,35 @@ final class AdbDevice: ObservableObject {
         perform({
             let flag = system ? "-s" : "-3"
             let text = try self.shellText("pm list packages \(flag)")
-            return text.split(whereSeparator: { $0.isNewline }).compactMap { line in
+            var apps = text.split(whereSeparator: { $0.isNewline }).compactMap { line -> AppInfo? in
                 let value = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard value.hasPrefix("package:") else { return nil }
-                return AppInfo(packageName: String(value.dropFirst("package:".count)))
+                return AppInfo(packageName: String(value.dropFirst("package:".count)), label: nil)
             }
+            // Resolve Chinese labels in one batched shell command so the list
+            // stays fast. nonLocalizedLabel holds the localized app name.
+            if !apps.isEmpty {
+                let packages = apps.map(\.packageName).joined(separator: " ")
+                let labelText = try? self.shellText(
+                    "for p in \(packages); do L=$(pm dump $p 2>/dev/null | grep -m1 'nonLocalizedLabel=' | sed 's/.*nonLocalizedLabel=//'); echo \"$p|$L\"; done",
+                    timeout: 90
+                )
+                var labels: [String: String] = [:]
+                labelText?.split(whereSeparator: { $0.isNewline }).forEach { line in
+                    let parts = String(line).split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+                    guard parts.count == 2 else { return }
+                    let name = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !name.isEmpty, name != "null", !name.hasPrefix("0x") {
+                        labels[String(parts[0])] = name
+                    }
+                }
+                apps = apps.map { app in
+                    var copy = app
+                    copy.label = labels[app.packageName]
+                    return copy
+                }
+            }
+            return apps
         }, completion: completion)
     }
 
@@ -493,7 +529,41 @@ final class AdbDevice: ObservableObject {
     }
 
     func listFiles(path: String, completion: @escaping (Result<[RemoteFile], Error>) -> Void) {
-        perform({ try self.listFilesSync(path) }, completion: completion)
+        perform({
+            do {
+                return try self.listFilesSync(path)
+            } catch {
+                // sync LIST is denied on many system paths (e.g. /data).
+                // Fall back to `ls -la` over the shell service.
+                return try self.listFilesShell(path)
+            }
+        }, completion: completion)
+    }
+
+    /// Fallback listing via `ls -la`, used when the sync protocol has no
+    /// permission for the directory (common for /data and other root paths).
+    private func listFilesShell(_ path: String) throws -> [RemoteFile] {
+        let safe = path.replacingOccurrences(of: "\"", with: "\\\"")
+        let text = try shellText("ls -la \"\(safe)\" 2>/dev/null", timeout: 30)
+        var result: [RemoteFile] = []
+        for raw in text.split(whereSeparator: { $0.isNewline }) {
+            let line = String(raw)
+            let columns = line.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            guard columns.count >= 8 else { continue }
+            let permissions = columns[0]
+            guard permissions.count >= 10 else { continue }
+            let name = columns[7...].joined(separator: " ")
+            guard name != "." && name != ".." else { continue }
+            var mode: UInt32 = permissions.hasPrefix("d") ? 0o40755 : 0o100644
+            let chars = Array(permissions)
+            let ownerRead = chars[1] != "-" ? UInt32(0o400) : 0
+            let ownerWrite = chars[2] != "-" ? UInt32(0o200) : 0
+            mode |= ownerRead | ownerWrite
+            let size = UInt32(columns[4]) ?? 0
+            let fullPath = path.hasSuffix("/") ? path + name : path + "/" + name
+            result.append(RemoteFile(name: name, path: fullPath, mode: mode, size: size, mtime: 0))
+        }
+        return result.sorted { $0.name < $1.name }
     }
 
     private func listFilesSync(_ path: String) throws -> [RemoteFile] {
@@ -533,7 +603,7 @@ final class AdbDevice: ObservableObject {
         }, completion: completion)
     }
 
-    private func pushFileSync(from url: URL, to remotePath: String) throws {
+    private func pushFileSync(from url: URL, to remotePath: String, progress: ((Double) -> Void)? = nil) throws {
         let stream = try openService("sync:")
         defer { closeStream(stream) }
         let channel = SyncChannel(device: self, stream: stream)
@@ -543,11 +613,16 @@ final class AdbDevice: ObservableObject {
 
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
+        let total = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.doubleValue ?? 0
+        var sent: Double = 0
         while true {
             let chunk = try handle.read(upToCount: 60 * 1024) ?? Data()
             if chunk.isEmpty { break }
             try channel.send(id: "DATA", data: chunk)
+            sent += Double(chunk.count)
+            if total > 0 { progress?(min(sent / total, 1)) }
         }
+        progress?(1)
         let mtime = UInt32(Date().timeIntervalSince1970)
         try channel.send(id: "DONE", size: mtime)
 
@@ -594,12 +669,22 @@ final class AdbDevice: ObservableObject {
     }
 
     func installApk(from url: URL, completion: @escaping (Result<String, Error>) -> Void) {
+        installApk(from: url, progress: nil, completion: completion)
+    }
+
+    /// Install an APK, reporting progress: 0–0.9 while pushing the file,
+    /// 0.9–1.0 while the package manager installs it.
+    func installApk(from url: URL, progress: ((Double) -> Void)?, completion: @escaping (Result<String, Error>) -> Void) {
         perform({
             let name = "adbhelper-\(UUID().uuidString).apk"
             let remote = "/data/local/tmp/\(name)"
-            try self.pushFileSync(from: url, to: remote)
-            let output = try self.shellText("pm install -r \(remote)", timeout: 120)
-            _ = try? self.shellText("rm -f \(remote)")
+            defer { _ = try? self.shellText("rm -f \(remote)") }
+            try self.pushFileSync(from: url, to: remote) { fraction in
+                progress?(fraction * 0.9)
+            }
+            progress?(0.92)
+            let output = try self.shellText("pm install -r \(remote)", timeout: 180)
+            progress?(1)
             if output.localizedCaseInsensitiveContains("success") { return output }
             throw AdbError.device(output.trimmingCharacters(in: .whitespacesAndNewlines))
         }, completion: completion)
