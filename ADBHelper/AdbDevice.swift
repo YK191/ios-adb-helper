@@ -355,8 +355,9 @@ final class AdbDevice: ObservableObject {
                     result["adbhelper.selinux"] = value
                 case "APH_STORAGE":
                     let columns = value.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-                    if columns.count >= 5 {
-                        result["adbhelper.storage"] = "\(columns[3]) / \(columns[1]) · \(columns[4])"
+                    if columns.count >= 4 {
+                        // df: Filesystem Size Used Avail Use% Mounted
+                        result["adbhelper.storage"] = "可用 \(columns[3]) · 已用 \(columns[2]) · 共 \(columns[1])"
                     } else {
                         result["adbhelper.storage"] = value
                     }

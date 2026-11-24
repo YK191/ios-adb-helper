@@ -3,12 +3,33 @@ import SwiftUI
 struct ShellView: View {
     @EnvironmentObject var model: DeviceViewModel
     @State private var command = ""
-    @State private var output = "连接设备后输入 adb shell 命令，例如：\n  getprop ro.product.model\n  pm list packages -3"
+    @State private var lines: [OutputLine] = [
+        OutputLine(
+            text: "连接设备后输入 adb shell 命令，例如：\n  getprop ro.product.model\n  pm list packages -3",
+            kind: .hint
+        )
+    ]
     @State private var commandHistory: [String] = []
     @State private var showQuick = false
 
-    private var isPlaceholder: Bool {
-        output.hasPrefix("连接设备后输入")
+    private enum OutputKind: Equatable {
+        case hint, command, result, error, info
+    }
+
+    private struct OutputLine: Identifiable {
+        let id = UUID()
+        let text: String
+        let kind: OutputKind
+    }
+
+    private func color(for kind: OutputKind) -> Color {
+        switch kind {
+        case .hint: return Color.white.opacity(0.38)
+        case .command: return AppTheme.mint
+        case .result: return Color(0xD6F5E9)
+        case .error: return AppTheme.danger
+        case .info: return AppTheme.blue
+        }
     }
 
     var body: some View {
@@ -18,29 +39,31 @@ struct ShellView: View {
 
                 commandBar
 
-                HStack(spacing: 8) {
-                    toolButton("zap", "快捷命令") { showQuick = true }
-                    toolButton("doc.on.doc", "复制") { UIPasteboard.general.string = output }
-                    toolButton("trash", "清空") { output = "" }
-                    toolButton("doc.text.magnifyingglass", "日志") { loadLogcat() }
-                    if !commandHistory.isEmpty {
-                        Menu {
-                            ForEach(Array(commandHistory.suffix(12)), id: \.self) { item in
-                                Button(item) { command = item }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        toolButton("zap", "快捷命令") { showQuick = true }
+                        toolButton("doc.on.doc", "复制") { copyOutput() }
+                        toolButton("clipboard", "粘贴") { paste() }
+                        toolButton("trash", "清空") { lines = [] }
+                        toolButton("doc.text.magnifyingglass", "日志") { loadLogcat() }
+                        if !commandHistory.isEmpty {
+                            Menu {
+                                ForEach(Array(commandHistory.suffix(12)), id: \.self) { item in
+                                    Button(item) { command = item }
+                                }
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                    Text("历史")
+                                }
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(AppTheme.blue)
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(AppTheme.blue.opacity(0.12), in: Capsule())
                             }
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                Text("历史")
-                            }
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(AppTheme.blue)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(AppTheme.blue.opacity(0.12), in: Capsule())
                         }
                     }
-                    Spacer(minLength: 0)
                 }
             }
             .padding(16)
@@ -69,12 +92,20 @@ struct ShellView: View {
             .background(Color.white.opacity(0.045))
 
             ScrollView {
-                Text(output)
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(isPlaceholder ? Color.white.opacity(0.38) : Color(0xA8F3D8))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(lines) { line in
+                        Text(line.text)
+                            .font(.system(
+                                .footnote,
+                                design: .monospaced,
+                                weight: line.kind == .command ? .semibold : .regular
+                            ))
+                            .foregroundStyle(color(for: line.kind))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(14)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -131,6 +162,21 @@ struct ShellView: View {
         .buttonStyle(.plain)
     }
 
+    private func copyOutput() {
+        let all = lines.map(\.text).joined()
+        guard !all.isEmpty else { return }
+        UIPasteboard.general.string = all
+        model.notify("终端内容已复制")
+    }
+
+    private func paste() {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else {
+            model.notify("剪贴板为空")
+            return
+        }
+        command = text
+    }
+
     private var quickCommandSheet: some View {
         NavigationStack {
             ScrollView {
@@ -184,12 +230,14 @@ struct ShellView: View {
 
     private func loadLogcat() {
         guard model.ensureConnected() else { return }
-        output = "正在读取最近日志…\n"
+        lines = [OutputLine(text: "正在读取最近日志…\n", kind: .info)]
         model.device.logcat(lines: 300) { result in
             DispatchQueue.main.async {
                 switch result {
-                case .success(let text): output = text.isEmpty ? "(日志为空)" : text
-                case .failure(let error): output = "读取失败：\(error.localizedDescription)"
+                case .success(let text):
+                    lines = [OutputLine(text: text.isEmpty ? "(日志为空)" : text, kind: .result)]
+                case .failure(let error):
+                    lines = [OutputLine(text: "读取失败：\(error.localizedDescription)", kind: .error)]
                 }
             }
         }
@@ -201,15 +249,16 @@ struct ShellView: View {
         commandHistory.append(text)
         if commandHistory.count > 50 { commandHistory.removeFirst() }
         command = ""
-        output += "$ \(text)\n"
+        // Remove the initial hint once the user runs a command.
+        lines.removeAll { $0.kind == .hint }
+        lines.append(OutputLine(text: "$ \(text)\n", kind: .command))
         model.device.shell(text) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let value):
-                    output += value
-                    if value.isEmpty { output += "(无输出)\n" }
+                    lines.append(OutputLine(text: value.isEmpty ? "(无输出)\n" : value, kind: .result))
                 case .failure(let error):
-                    output += "错误：\(error.localizedDescription)\n"
+                    lines.append(OutputLine(text: "错误：\(error.localizedDescription)\n", kind: .error))
                 }
             }
         }

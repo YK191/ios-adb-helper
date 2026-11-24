@@ -8,6 +8,7 @@ struct AppsView: View {
     @State private var showSystem = false
     @State private var selected: AppInfo?
     @State private var showImporter = false
+    @State private var showInstallTip = false
     @State private var isLoading = false
 
     private var filtered: [AppInfo] {
@@ -58,14 +59,14 @@ struct AppsView: View {
                     Button {
                         load()
                     } label: {
-                        Image(systemName: "arrow.clockwise")
+                        Label("刷新", systemImage: "arrow.clockwise")
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        showImporter = true
+                        showInstallTip = true
                     } label: {
-                        Image(systemName: "square.and.arrow.down")
+                        Label("安装", systemImage: "square.and.arrow.down")
                     }
                 }
             }
@@ -85,15 +86,18 @@ struct AppsView: View {
                 Button("卸载", systemImage: "square.and.arrow.up", role: .destructive) { act("uninstall") }
                 Button("取消", role: .cancel) {}
             }
+            .alert("安装 APK", isPresented: $showInstallTip) {
+                Button("取消", role: .cancel) {}
+                Button("选择文件") { showImporter = true }
+            } message: {
+                Text("接下来会打开 iPhone 的「文件」App，请找到并点选一个 .apk 文件（需先把 APK 存到「文件」里，例如通过微信/网盘保存到文件）。选中后会自动推送到设备安装。")
+            }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url):
-                    guard url.startAccessingSecurityScopedResource() else {
-                        model.notify("无法读取所选文件")
-                        return
-                    }
+                    let didAccess = url.startAccessingSecurityScopedResource()
                     model.device.installApk(from: url) { installResult in
-                        url.stopAccessingSecurityScopedResource()
+                        if didAccess { url.stopAccessingSecurityScopedResource() }
                         DispatchQueue.main.async {
                             switch installResult {
                             case .success:

@@ -7,6 +7,7 @@ struct FilesView: View {
     @State private var files: [RemoteFile] = []
     @State private var selected: RemoteFile?
     @State private var showImporter = false
+    @State private var showUploadTip = false
     @State private var isLoading = false
 
     private let shortcuts = ["/sdcard", "/sdcard/Download", "/sdcard/DCIM", "/"]
@@ -76,8 +77,8 @@ struct FilesView: View {
                     .disabled(path == "/" || path.isEmpty)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showImporter = true } label: {
-                        Image(systemName: "square.and.arrow.up")
+                    Button { showUploadTip = true } label: {
+                        Label("上传", systemImage: "square.and.arrow.up")
                     }
                 }
             }
@@ -93,17 +94,20 @@ struct FilesView: View {
                 Button("删除", systemImage: "trash", role: .destructive) { delete() }
                 Button("取消", role: .cancel) {}
             }
+            .alert("上传到设备", isPresented: $showUploadTip) {
+                Button("取消", role: .cancel) {}
+                Button("选择文件") { showImporter = true }
+            } message: {
+                Text("会打开 iPhone 的「文件」App 让你选择文件，选中的文件会上传到上面显示的当前设备目录。请先把要传的文件存到 iPhone「文件」里。")
+            }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
                 switch result {
                 case .success(let url):
-                    guard url.startAccessingSecurityScopedResource() else {
-                        model.notify("无法读取所选文件")
-                        return
-                    }
+                    let didAccess = url.startAccessingSecurityScopedResource()
                     let name = url.lastPathComponent
                     let destination = path.hasSuffix("/") ? path + name : path + "/" + name
                     model.device.pushFile(from: url, to: destination) { uploadResult in
-                        url.stopAccessingSecurityScopedResource()
+                        if didAccess { url.stopAccessingSecurityScopedResource() }
                         DispatchQueue.main.async {
                             switch uploadResult {
                             case .success(let text):
