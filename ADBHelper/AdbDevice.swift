@@ -92,6 +92,8 @@ final class AdbDevice: ObservableObject {
     private let queue = DispatchQueue(label: "com.adbhelper.adb", qos: .userInitiated)
     private var nextLocalId: UInt32 = 1
     private var pendingPackets: [AdbPacket] = []
+    /// 录像专用通道：必须一直开着，screenrecord 才不会因为 SIGHUP 被杀。
+    private var recordingStream: AdbStream?
 
     // MARK: - Connection
 
@@ -100,7 +102,7 @@ final class AdbDevice: ObservableObject {
             do {
                 let banner = try self.connectSync(host: host, port: port)
                 // 清理旧版本或异常退出可能遗留在设备上的录像临时文件。
-                try? self.shellText("rm -f /data/local/tmp/adbhelper-*.mp4 /sdcard/adbhelper-*.mp4", timeout: 10)
+                try? self.shellText("rm -f /data/local/tmp/adbhelper-*.mp4 /data/local/tmp/Screenrecord_*.mp4 /sdcard/adbhelper-*.mp4", timeout: 10)
                 DispatchQueue.main.async {
                     self.isConnected = true
                     self.status = "已连接 \(host):\(port)"
@@ -119,6 +121,7 @@ final class AdbDevice: ObservableObject {
 
     func disconnect() {
         queue.async {
+            self.recordingStream = nil
             self.socket.close()
             self.pendingPackets.removeAll()
             DispatchQueue.main.async {
@@ -407,41 +410,98 @@ final class AdbDevice: ObservableObject {
         }, completion: completion)
     }
 
-    /// Start `screenrecord` as a background process and return its PID so the
-    /// recording can be stopped at any time with SIGINT.
+    // MARK: - Screen recording
+
+    /// 录像方式与 atvTools 一致：`screenrecord` 跑在一个「常开」的 shell 通道里，
+    /// 前景执行（不带 `&`）。旧实现用 `screenrecord ... &` 后台启动，adb shell
+    /// 通道读到 EOF 关闭后 adbd 会给整个进程组发 SIGHUP，进程在几百毫秒内被杀，
+    /// 所以永远返回「启动失败」。保持通道打开，进程就一直活着，随时可 SIGINT 停止。
     func startScreenRecording(completion: @escaping (Result<ScreenRecording, Error>) -> Void) {
-        // 临时文件放在 /data/local/tmp（不进入相册/媒体库），停止后一定会清理。
-        let name = "adbhelper-\(Int(Date().timeIntervalSince1970)).mp4"
-        let remote = "/data/local/tmp/\(name)"
-        let log = "/data/local/tmp/\(name).log"
         perform({
-            // Capture screenrecord's stderr so a failure can report the real
-            // device message instead of a generic "not supported" text.
-            let text = try self.shellText("screenrecord \(remote) >\(log) 2>&1 & echo $!", timeout: 15)
-            let lines = text.split(whereSeparator: { $0.isNewline }).map {
-                String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+            self.closeRecordingStream()
+
+            // atvTools 的做法：先按设备默认分辨率启动，失败再降级到 1280x720；
+            // 若临时目录不可写，再退到 /sdcard。每次尝试都用新文件名，避免 File exists。
+            let base = AdbDevice.recordBaseName()
+            let attempts: [(option: String, directory: String)] = [
+                ("", "/data/local/tmp"),
+                ("--size 1280x720", "/data/local/tmp"),
+                ("--size 1280x720", "/sdcard"),
+            ]
+            var lastError: Error?
+            for attempt in attempts {
+                let remote = "\(attempt.directory)/\(base).mp4"
+                do {
+                    return try self.launchScreenRecord(remote: remote, option: attempt.option)
+                } catch {
+                    lastError = error
+                    self.closeRecordingStream()
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
             }
-            guard let pidLine = lines.last(where: { !$0.isEmpty }), let pid = Int(pidLine), pid > 0 else {
-                try? self.shellText("rm -f \(remote) \(log)")
-                throw AdbError.device("无法启动录像进程，设备可能不支持 screenrecord")
-            }
-            // Wait up to ~2s for the process to settle (some devices are slow).
-            var alive = false
-            for _ in 0..<8 {
-                if let state = try? self.shellText("kill -0 \(pid) 2>/dev/null && echo alive || echo gone"),
-                   state.contains("alive") { alive = true; break }
-                Thread.sleep(forTimeInterval: 0.25)
-            }
-            if !alive {
-                let detail = (try? self.shellText("cat \(log) 2>/dev/null"))?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                try? self.shellText("kill -9 \(pid) 2>/dev/null; rm -f \(remote) \(log)")
-                throw AdbError.device(detail.isEmpty
-                    ? "screenrecord 进程退出，设备可能不支持录像或没有存储空间"
-                    : "screenrecord 启动失败：\(detail)")
-            }
-            return ScreenRecording(pid: pid, remotePath: remote, logPath: log, startedAt: Date())
+            throw lastError ?? AdbError.device("设备不支持 screenrecord")
         }, completion: completion)
+    }
+
+    private static func recordBaseName() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return "Screenrecord_\(formatter.string(from: Date()))"
+    }
+
+    /// 在常开通道里前台启动 screenrecord，并把 pid 返回给上层。
+    private func launchScreenRecord(remote: String, option: String) throws -> ScreenRecording {
+        _ = try? self.shellText("rm -f \(remote)", timeout: 10)
+
+        let args = option.isEmpty ? "" : "\(option) "
+        // exec 让 screenrecord 直接接管这个 shell 进程的 pid，
+        // 之后用 `kill -INT <pid>` 就能让它写完 moov 再退出。
+        let command = "echo ADBH_PID:$$; exec screenrecord \(args)\(remote)"
+
+        socket.setReadTimeout(4)
+        defer { socket.setReadTimeout(30) }
+        let stream = try openService("shell:\(command)")
+
+        var text = ""
+        var pid: Int?
+        let deadline = Date().addingTimeInterval(2.5)
+        while Date() < deadline {
+            guard let chunk = try? readStreamChunk(stream) else { break }
+            text += String(decoding: chunk, as: UTF8.self)
+            if pid == nil, let range = text.range(of: "ADBH_PID:") {
+                let digits = text[range.upperBound...].prefix(while: { $0.isNumber })
+                if !digits.isEmpty {
+                    pid = Int(digits)
+                    break
+                }
+            }
+        }
+
+        guard let pid = pid else {
+            let detail = AdbDevice.cleanMessage(text + drainStream(stream))
+            throw AdbError.device(detail.isEmpty ? "screenrecord 没有响应" : detail)
+        }
+
+        // 编码器初始化需要一点时间：确认进程没有立刻退出，并且文件已经开始写入。
+        var alive = true
+        for _ in 0..<12 {
+            Thread.sleep(forTimeInterval: 0.25)
+            let state = (try? self.shellText("if kill -0 \(pid) 2>/dev/null; then echo alive; else echo gone; fi")) ?? ""
+            if state.contains("gone") { alive = false; break }
+            if AdbDevice.byteCount((try? self.shellText("wc -c < \(remote) 2>/dev/null")) ?? "") > 0 { break }
+        }
+
+        if !alive {
+            let detail = AdbDevice.cleanMessage(text + drainStream(stream))
+            closeStream(stream)
+            throw AdbError.device(detail.isEmpty
+                ? "screenrecord 进程退出，设备可能不支持录像或没有存储空间"
+                : "screenrecord 启动失败：\(detail)")
+        }
+
+        recordingStream = stream
+        return ScreenRecording(pid: pid, remotePath: remote, logPath: "", startedAt: Date())
     }
 
     /// Stop a recording gracefully, wait for the MP4 to be finalized, then
@@ -449,15 +509,40 @@ final class AdbDevice: ObservableObject {
     func stopScreenRecording(_ recording: ScreenRecording, completion: @escaping (Result<URL, Error>) -> Void) {
         perform({
             // 无论拉取或写入是否失败，都尽力删掉设备端临时文件。
-            defer { try? self.shellText("rm -f \(recording.remotePath) \(recording.logPath)") }
-            _ = try? self.shellText("kill -INT \(recording.pid)")
-            let deadline = Date().addingTimeInterval(12)
-            while Date() < deadline {
-                let state = try? self.shellText("kill -0 \(recording.pid) 2>/dev/null && echo alive || echo gone")
-                if state?.contains("gone") == true { break }
-                Thread.sleep(forTimeInterval: 0.25)
+            defer {
+                self.closeRecordingStream()
+                _ = try? self.shellText("rm -f \(recording.remotePath)", timeout: 10)
             }
+
+            // SIGINT 是 screenrecord 的「正常停止」，它会把 moov 写完再退出。
+            _ = try? self.shellText("kill -INT \(recording.pid) 2>/dev/null", timeout: 10)
+            let deadline = Date().addingTimeInterval(10)
+            var stopped = false
+            while Date() < deadline {
+                let state = (try? self.shellText("if kill -0 \(recording.pid) 2>/dev/null; then echo alive; else echo gone; fi")) ?? "gone"
+                if state.contains("gone") { stopped = true; break }
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+            if !stopped {
+                _ = try? self.shellText("kill -TERM \(recording.pid) 2>/dev/null", timeout: 10)
+                Thread.sleep(forTimeInterval: 0.6)
+            }
+
+            // 等文件大小稳定，确保 moov 已经落盘再拉取。
+            var lastSize = -1
+            for _ in 0..<20 {
+                let size = AdbDevice.byteCount((try? self.shellText("wc -c < \(recording.remotePath) 2>/dev/null")) ?? "")
+                if size > 0 && size == lastSize { break }
+                lastSize = size
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+
+            closeRecordingStream()
+
             let data = try self.pullFileSync(recording.remotePath)
+            guard !data.isEmpty else {
+                throw AdbError.device("录像文件为空，设备可能不支持录像")
+            }
             let directory = try FileManager.default.url(
                 for: .documentDirectory,
                 in: .userDomainMask,
@@ -469,6 +554,64 @@ final class AdbDevice: ObservableObject {
             try data.write(to: destination, options: .atomic)
             return destination
         }, completion: completion)
+    }
+
+    // MARK: - Recording stream plumbing
+
+    /// 从指定通道读一块数据；通道关闭或读超时会抛出，调用方据此判断。
+    private func readStreamChunk(_ stream: AdbStream) throws -> Data {
+        while true {
+            let packet = try takePacket(forLocalId: stream.localId)
+            if packet.command == AdbCommand.wrte {
+                try? socket.sendPacket(
+                    command: AdbCommand.okay,
+                    arg0: stream.localId,
+                    arg1: stream.remoteId
+                )
+                return packet.payload
+            } else if packet.command == AdbCommand.clse {
+                throw AdbError.connection("通道已关闭")
+            } else if packet.command == AdbCommand.fail {
+                throw AdbError.device(String(decoding: packet.payload, as: UTF8.self))
+            }
+        }
+    }
+
+    /// 短超时地把通道里剩余的报错信息读出来（最多约 4KB）。
+    private func drainStream(_ stream: AdbStream, timeout: Double = 0.5) -> String {
+        socket.setReadTimeout(timeout)
+        defer { socket.setReadTimeout(30) }
+        var text = ""
+        for _ in 0..<8 {
+            guard let chunk = try? readStreamChunk(stream) else { break }
+            text += String(decoding: chunk, as: UTF8.self)
+            if text.count > 4000 { break }
+        }
+        return text
+    }
+
+    private func closeRecordingStream() {
+        guard let stream = recordingStream else { return }
+        recordingStream = nil
+        try? socket.sendPacket(command: AdbCommand.clse, arg0: stream.localId, arg1: stream.remoteId)
+        // 清掉这条通道上残留的包，避免污染后续命令的读取。
+        socket.setReadTimeout(1)
+        for _ in 0..<8 {
+            guard let packet = try? takePacket(forLocalId: stream.localId) else { break }
+            if packet.command == AdbCommand.clse { break }
+        }
+        socket.setReadTimeout(30)
+    }
+
+    private static func byteCount(_ text: String) -> Int {
+        Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    private static func cleanMessage(_ raw: String) -> String {
+        let lines = raw.split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("ADBH_PID:") }
+        return lines.suffix(3).joined(separator: " ")
     }
 
     func listPackages(system: Bool, completion: @escaping (Result<[AppInfo], Error>) -> Void) {
