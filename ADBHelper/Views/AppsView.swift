@@ -90,7 +90,7 @@ struct AppsView: View {
                 Button("取消", role: .cancel) {}
                 Button("选择文件") { showImporter = true }
             } message: {
-                Text("接下来会打开 iPhone 的「文件」App，请找到并点选一个 .apk 文件（需先把 APK 存到「文件」里，例如通过微信/网盘保存到文件）。选中后会自动推送到设备安装。")
+                Text("会打开系统文件选择器。找到 .apk 文件后，先点一下文件让它打勾，再点右上角的「选择/打开」确认，才会开始安装（不需要先连接设备）。如果列表里没有文件，请先在「文件」App 里把 APK 存到「我的 iPhone」中。")
             }
             .sheet(isPresented: $showImporter) {
                 DocumentPicker { url in

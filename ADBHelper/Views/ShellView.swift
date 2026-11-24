@@ -22,6 +22,23 @@ struct ShellView: View {
         let kind: OutputKind
     }
 
+    /// One attributed string so the whole transcript can be selected by
+    /// dragging, while keeping command/output/error colors.
+    private var attributedOutput: NSAttributedString {
+        let result = NSMutableAttributedString()
+        for line in lines {
+            let fontSize: CGFloat = 13
+            let weight: UIFont.Weight = line.kind == .command ? .semibold : .regular
+            let font = UIFont.monospacedSystemFont(ofSize: fontSize, weight: weight)
+            let uiColor = UIColor(color(for: line.kind))
+            result.append(NSAttributedString(string: line.text, attributes: [
+                .font: font,
+                .foregroundColor: uiColor,
+            ]))
+        }
+        return result
+    }
+
     private func color(for kind: OutputKind) -> Color {
         switch kind {
         case .hint: return Color.white.opacity(0.38)
@@ -91,23 +108,8 @@ struct ShellView: View {
             .padding(.vertical, 11)
             .background(Color.white.opacity(0.045))
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(lines) { line in
-                        Text(line.text)
-                            .font(.system(
-                                .footnote,
-                                design: .monospaced,
-                                weight: line.kind == .command ? .semibold : .regular
-                            ))
-                            .foregroundStyle(color(for: line.kind))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(14)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            TerminalTextView(attributed: attributedOutput)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(AppTheme.ink, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(

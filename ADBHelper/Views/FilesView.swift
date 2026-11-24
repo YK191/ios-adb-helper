@@ -98,7 +98,7 @@ struct FilesView: View {
                 Button("取消", role: .cancel) {}
                 Button("选择文件") { showImporter = true }
             } message: {
-                Text("会打开 iPhone 的「文件」App 让你选择文件，选中的文件会上传到上面显示的当前设备目录。请先把要传的文件存到 iPhone「文件」里。")
+                Text("会打开系统文件选择器。找到文件后，先点一下让它打勾，再点右上角的「选择/打开」确认，才会上传到当前设备目录（不需要先连接设备，但上传时需要连接）。如果列表里没有文件，请先在「文件」App 里把文件存到「我的 iPhone」中。")
             }
             .sheet(isPresented: $showImporter) {
                 DocumentPicker { url in
