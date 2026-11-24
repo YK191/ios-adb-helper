@@ -1,0 +1,29 @@
+name: ADBHelper
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  bundleIdPrefix: com.adbhelper
+  createIntermediateGroups: true
+targets:
+  ADBHelper:
+    type: application
+    platform: iOS
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.adbhelper.ios
+      INFOPLIST_FILE: ADBHelper/Info.plist
+      PRODUCT_NAME: ADBHelper
+      SWIFT_VERSION: "5.0"
+      TARGETED_DEVICE_FAMILY: "1,2"
+      CODE_SIGN_STYLE: Manual
+      DEVELOPMENT_TEAM: ""
+      GENERATE_INFOPLIST_FILE: NO
+      IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    sources:
+      - path: ADBHelper
+        excludes:
+          - Info.plist
+schemes:
+  ADBHelper:
+    build:
+      targets:
+        ADBHelper: [build, run, test, profile, analyze, archive]

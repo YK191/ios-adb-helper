@@ -1,0 +1,16 @@
+# Xcode / build artifacts
+build/
+*.xcarchive
+*.xcodeproj/
+DerivedData/
+*.ipa
+*.app/
+
+# macOS
+.DS_Store
+
+# Local caches / generated files
+.tmp_apk/
+pylibs/
+__pycache__/
+*.pyc
