@@ -47,9 +47,6 @@ struct ConnectionView: View {
     @State private var screenshot: UIImage?
     @State private var showScreenshot = false
     @State private var showHelp = false
-    @State private var brightness = "128"
-    @State private var density = "480"
-    @State private var resolution = ""
     @State private var recording: ScreenRecording?
     @State private var elapsed = 0
     @State private var isStopping = false
@@ -87,12 +84,8 @@ struct ConnectionView: View {
     ]
 
     private let quickControls: [(String, String, String)] = [
-        ("电源", "power", "input keyevent 26"),
         ("Home", "house.fill", "input keyevent 3"),
         ("返回", "arrow.left", "input keyevent 4"),
-        ("最近任务", "square.on.square", "input keyevent 187"),
-        ("截图", "camera.fill", ""),
-        ("音量+", "speaker.wave.2.fill", "input keyevent 24"),
     ]
 
     var body: some View {
@@ -103,16 +96,11 @@ struct ConnectionView: View {
 
                     if model.isConnected {
                         infoCard
-                        captureCard
-                        displayCard
+                        controlsCard
                     }
 
                     if !model.history.isEmpty {
                         historyCard
-                    }
-
-                    if model.isConnected {
-                        controlsCard
                     }
                 }
                 .padding(16)
@@ -243,7 +231,7 @@ struct ConnectionView: View {
                 }
                 .buttonStyle(SoftButtonStyle())
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.flexible(), alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 10) {
                 ForEach(infoKeys) { item in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 5) {
@@ -256,7 +244,7 @@ struct ConnectionView: View {
                             .lineLimit(2)
                             .textSelection(.enabled)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
                     .padding(10)
                     .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
@@ -267,24 +255,35 @@ struct ConnectionView: View {
 
     private var controlsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "快捷控制", systemImage: "bolt.fill", subtitle: "常用按键与截图")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
+            SectionHeader(title: "快捷控制", systemImage: "bolt.fill", subtitle: "Home · 返回 · 截图 · 录像")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 10) {
                 ForEach(quickControls, id: \.0) { item in
                     Button {
-                        if item.2.isEmpty { takeScreenshot() }
-                        else { model.run(item.2, success: "\(item.0) 已执行") }
+                        model.run(item.2, success: "\(item.0) 已执行")
                     } label: {
-                        VStack(spacing: 7) {
-                            Image(systemName: item.1)
-                                .font(.system(size: 19, weight: .semibold))
-                                .foregroundStyle(AppTheme.mint)
-                                .frame(width: 34, height: 34)
-                                .background(AppTheme.mint.opacity(0.12), in: Circle())
-                            Text(item.0).font(.caption.weight(.medium))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        controlTile(icon: item.1, label: item.0)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button { takeScreenshot() } label: {
+                    controlTile(icon: "camera.fill", label: "截图")
+                }
+                .buttonStyle(.plain)
+
+                if let activeRecording = recording {
+                    Button { stopRecording(activeRecording) } label: {
+                        controlTile(
+                            icon: "square.fill",
+                            label: isStopping ? "保存中" : timeString(elapsed),
+                            tint: AppTheme.danger
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isStopping)
+                } else {
+                    Button { startRecording() } label: {
+                        controlTile(icon: "video.fill", label: "录像")
                     }
                     .buttonStyle(.plain)
                 }
@@ -293,77 +292,21 @@ struct ConnectionView: View {
         .appCard()
     }
 
-    private var captureCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(
-                title: "截图与录像",
-                systemImage: "video.fill",
-                subtitle: "可随时停止 · 无声音",
-                tint: AppTheme.danger
-            )
-
-            HStack(spacing: 10) {
-                Button {
-                    takeScreenshot()
-                } label: {
-                    Label("截图", systemImage: "camera.fill")
-                }
-                .buttonStyle(SoftButtonStyle())
-
-                if let activeRecording = recording {
-                    Button {
-                        stopRecording(activeRecording)
-                    } label: {
-                        Label(isStopping ? "保存中…" : "停止录像", systemImage: "square.fill")
-                            .foregroundStyle(AppTheme.danger)
-                    }
-                    .buttonStyle(SoftButtonStyle())
-                    .disabled(isStopping)
-
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(AppTheme.danger)
-                            .frame(width: 7, height: 7)
-                        Text(timeString(elapsed))
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(AppTheme.danger)
-                    }
-                } else {
-                    Button {
-                        startRecording()
-                    } label: {
-                        Label("录像", systemImage: "video.fill")
-                    }
-                    .buttonStyle(SoftButtonStyle())
-                }
-
-                Spacer(minLength: 0)
-            }
+    private func controlTile(icon: String, label: String, tint: Color = AppTheme.mint) -> some View {
+        VStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 34, height: 34)
+                .background(tint.opacity(0.12), in: Circle())
+            Text(label)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+                .foregroundStyle(tint == AppTheme.mint ? .primary : tint)
         }
-        .appCard()
-    }
-
-    private var displayCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "屏幕与显示", systemImage: "display", subtitle: "即时生效，可一键恢复", tint: AppTheme.blue)
-            settingRow(icon: "sun.max", label: "亮度", placeholder: "0-255", text: $brightness) {
-                model.run("settings put system screen_brightness \(brightness)", success: "亮度已设置")
-            }
-            settingRow(icon: "textformat.size", label: "DPI", placeholder: "480", text: $density) {
-                model.run("wm density \(density)", success: "DPI 已设置")
-            }
-            settingRow(icon: "rectangle.on.rectangle", label: "分辨率", placeholder: "1080x2400", text: $resolution) {
-                guard !resolution.isEmpty else { model.notify("请输入分辨率"); return }
-                model.run("wm size \(resolution)", success: "分辨率已设置")
-            }
-            HStack(spacing: 8) {
-                Button("恢复 DPI") { model.run("wm density reset", success: "DPI 已恢复") }
-                Button("恢复分辨率") { model.run("wm size reset", success: "分辨率已恢复") }
-                Button("自动旋转") { model.run("settings put system accelerometer_rotation 1", success: "已开启自动旋转") }
-            }
-            .buttonStyle(SoftButtonStyle())
-        }
-        .appCard()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var historyCard: some View {
@@ -390,24 +333,6 @@ struct ConnectionView: View {
             }
         }
         .appCard()
-    }
-
-    private func settingRow(icon: String, label: String, placeholder: String, text: Binding<String>, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.footnote)
-                .foregroundStyle(AppTheme.blue)
-                .frame(width: 20)
-            Text(label).font(.footnote.weight(.medium))
-            TextField(placeholder, text: text)
-                .multilineTextAlignment(.trailing)
-                .keyboardType(label == "分辨率" ? .asciiCapable : .numberPad)
-                .autocapitalization(.none)
-                .font(.footnote.monospacedDigit())
-                .textFieldStyle(.plain)
-            Button("设置", action: action)
-                .buttonStyle(SoftButtonStyle())
-        }
     }
 
     private func startRecording() {

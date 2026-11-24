@@ -100,9 +100,9 @@ struct FilesView: View {
             } message: {
                 Text("会打开 iPhone 的「文件」App 让你选择文件，选中的文件会上传到上面显示的当前设备目录。请先把要传的文件存到 iPhone「文件」里。")
             }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
-                switch result {
-                case .success(let url):
+            .sheet(isPresented: $showImporter) {
+                DocumentPicker { url in
+                    showImporter = false
                     let didAccess = url.startAccessingSecurityScopedResource()
                     let name = url.lastPathComponent
                     let destination = path.hasSuffix("/") ? path + name : path + "/" + name
@@ -118,8 +118,6 @@ struct FilesView: View {
                             }
                         }
                     }
-                case .failure(let error):
-                    model.notify(error.localizedDescription)
                 }
             }
         }

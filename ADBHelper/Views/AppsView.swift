@@ -92,9 +92,9 @@ struct AppsView: View {
             } message: {
                 Text("接下来会打开 iPhone 的「文件」App，请找到并点选一个 .apk 文件（需先把 APK 存到「文件」里，例如通过微信/网盘保存到文件）。选中后会自动推送到设备安装。")
             }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
-                switch result {
-                case .success(let url):
+            .sheet(isPresented: $showImporter) {
+                DocumentPicker { url in
+                    showImporter = false
                     let didAccess = url.startAccessingSecurityScopedResource()
                     model.device.installApk(from: url) { installResult in
                         if didAccess { url.stopAccessingSecurityScopedResource() }
@@ -108,8 +108,6 @@ struct AppsView: View {
                             }
                         }
                     }
-                case .failure(let error):
-                    model.notify(error.localizedDescription)
                 }
             }
         }
