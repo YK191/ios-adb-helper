@@ -57,6 +57,7 @@
 - 录像使用 Android 自带的 `screenrecord`，以后台进程启动并保存 PID，点「停止录像」即发送 `SIGINT` 正常结束并拉取文件；不再设置录像时长，手动停止即可（系统自身最长约 180 秒）。录像**不含声音**，部分机型/模拟器可能不支持。`screenrecord` 必须先把 MP4 写到设备临时目录，本应用使用 `/data/local/tmp/adbhelper-*.mp4`（不进入相册/媒体库），拉取后立即删除；即使拉取失败也会尽力清理，下次连接时还会自动清理此前的残留文件。
 - 本应用应在合法设备、获得机主明确授权的前提下使用。
 - 本机没有 macOS/Swift 编译器，未经本地编译；云端 GitHub Actions（macOS）已完成一次成功编译，编译错误已修复。若以后改代码后 Actions 报错，把日志贴回来即可继续修。
+- 每次改代码 push 后，云端编译并覆盖 Release 的 IPA；本地会保留一份最新 IPA（`../ADBHelper.ipa`），需要手动更新时运行 `python3 scripts/download_ipa.py --out ../ADBHelper.ipa`（需本机存有 GitHub 凭据或设置 `GITHUB_TOKEN`）。
 
 ## 目录结构
 
@@ -76,6 +77,7 @@ ios-adb-helper/
 ├── scripts/gen_adb_key.py       密钥生成脚本
 ├── scripts/gen_icon.py          App 图标生成脚本
 ├── scripts/gen_screenshots.py   界面预览图生成脚本
+├── scripts/download_ipa.py      从 Release 下载最新 IPA 到本地
 ├── docs/screenshots/            README 界面预览图
 ├── project.yml                  XcodeGen 工程描述
 └── .github/workflows/build.yml   云编译配置
