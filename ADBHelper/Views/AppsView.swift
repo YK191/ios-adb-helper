@@ -18,45 +18,56 @@ struct AppsView: View {
 
     var body: some View {
         NavigationStack {
-            VStack {
-                HStack {
-                    Picker("类型", selection: $showSystem) {
-                        Text("用户应用").tag(false)
-                        Text("系统应用").tag(true)
+            VStack(spacing: 12) {
+                Picker("类型", selection: $showSystem) {
+                    Text("用户应用").tag(false)
+                    Text("系统应用").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .onChange(of: showSystem) { _ in load() }
+
+                ZStack {
+                    AppTheme.canvas.ignoresSafeArea()
+                    if filtered.isEmpty {
+                        EmptyStateView(
+                            systemImage: isLoading ? "hourglass" : "square.stack.3d.down.right",
+                            title: isLoading ? "正在读取应用…" : (filter.isEmpty ? "暂无应用列表" : "没有匹配的应用"),
+                            message: isLoading ? "正在通过 ADB 获取已安装包" : "点击右上角刷新按钮重新读取"
+                        )
+                    } else {
+                        List(filtered) { app in
+                            Button { selected = app } label: {
+                                appRow(app)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowBackground(AppTheme.card)
+                            .listRowSeparatorTint(AppTheme.border)
+                        }
+                        .listStyle(.insetGrouped)
+                        .scrollContentBackground(.hidden)
                     }
-                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("应用管理")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(text: $filter, prompt: "搜索包名")
+            .tint(AppTheme.mint)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        showSystem.toggle()
                         load()
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
-                .padding(.horizontal)
-
-                List(filtered) { app in
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        selected = app
+                        showImporter = true
                     } label: {
-                        HStack {
-                            Image(systemName: "app.badge")
-                            Text(app.packageName)
-                                .font(.footnote)
-                                .textSelection(.enabled)
-                        }
+                        Image(systemName: "square.and.arrow.down")
                     }
                 }
-                .listStyle(.plain)
-                .overlay {
-                    if isLoading { ProgressView() }
-                    else if apps.isEmpty {
-                        Text("点击刷新按钮读取应用列表").foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .navigationTitle("应用")
-            .toolbar {
-                Button("安装 APK") { showImporter = true }
             }
             .task { load() }
             .confirmationDialog(
@@ -66,12 +77,12 @@ struct AppsView: View {
                     set: { if !$0 { selected = nil } }
                 )
             ) {
-                Button("启动") { act("launch") }
-                Button("强行停止") { act("stop") }
-                Button("冻结/停用") { act("freeze") }
-                Button("解冻/启用") { act("unfreeze") }
-                Button("清除数据") { act("clear") }
-                Button("卸载", role: .destructive) { act("uninstall") }
+                Button("启动", systemImage: "play.fill") { act("launch") }
+                Button("强行停止", systemImage: "stop.fill") { act("stop") }
+                Button("冻结 / 停用", systemImage: "snowflake") { act("freeze") }
+                Button("解冻 / 启用", systemImage: "sun.max") { act("unfreeze") }
+                Button("清除数据", systemImage: "trash") { act("clear") }
+                Button("卸载", role: .destructive, systemImage: "square.and.arrow.up") { act("uninstall") }
                 Button("取消", role: .cancel) {}
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
@@ -87,6 +98,7 @@ struct AppsView: View {
                             switch installResult {
                             case .success:
                                 model.notify("安装完成")
+                                load()
                             case .failure(let error):
                                 model.notify(error.localizedDescription)
                             }
@@ -97,6 +109,34 @@ struct AppsView: View {
                 }
             }
         }
+    }
+
+    private func appRow(_ app: AppInfo) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(AppTheme.accentGradient.opacity(0.85))
+                Text(String(app.packageName.split(separator: ".").last?.prefix(1) ?? "A").uppercased())
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(app.packageName)
+                    .font(.footlineWeight())
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                Text(showSystem ? "系统应用" : "用户应用")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 4)
     }
 
     private func load() {
@@ -131,5 +171,11 @@ struct AppsView: View {
                 }
             }
         }
+    }
+}
+
+private extension Font {
+    static func footlineWeight() -> Font {
+        .footnote.weight(.medium)
     }
 }

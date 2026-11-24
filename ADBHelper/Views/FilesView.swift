@@ -9,50 +9,79 @@ struct FilesView: View {
     @State private var showImporter = false
     @State private var isLoading = false
 
+    private let shortcuts = ["/sdcard", "/sdcard/Download", "/sdcard/DCIM", "/"]
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 8) {
-                HStack {
-                    TextField("设备路径", text: $path)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(load)
-                    Button("前往", action: load)
-                }
-                .padding(.horizontal)
+            VStack(spacing: 12) {
+                pathBar
 
-                List(files) { file in
-                    Button {
-                        if file.isDirectory {
-                            path = file.path
-                            load()
-                        } else {
-                            selected = file
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: file.isDirectory ? "folder.fill" : "doc.fill")
-                                .foregroundStyle(file.isDirectory ? .orange : .secondary)
-                            VStack(alignment: .leading) {
-                                Text(file.name).font(.footnote)
-                                if !file.isDirectory {
-                                    Text("\(file.size) 字节").font(.caption2).foregroundStyle(.secondary)
-                                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(shortcuts, id: \.self) { item in
+                            Button {
+                                path = item
+                                load()
+                            } label: {
+                                Text(item)
+                                    .font(.caption2.monospaced())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        (path == item ? AppTheme.mint : Color.secondary).opacity(path == item ? 0.18 : 0.10),
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(path == item ? AppTheme.mint : .secondary)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .padding(.horizontal, 16)
                 }
-                .listStyle(.plain)
-                .overlay {
-                    if isLoading { ProgressView() }
-                    else if files.isEmpty { Text("点击「前往」读取目录").foregroundStyle(.secondary) }
+
+                ZStack {
+                    AppTheme.canvas.ignoresSafeArea()
+                    if files.isEmpty {
+                        EmptyStateView(
+                            systemImage: isLoading ? "hourglass" : "folder",
+                            title: isLoading ? "正在读取目录…" : "目录为空",
+                            message: isLoading ? "正在通过 ADB 列出文件" : "换个路径试试，或上传文件到当前目录"
+                        )
+                    } else {
+                        List(files) { file in
+                            Button { open(file) } label: { fileRow(file) }
+                                .buttonStyle(.plain)
+                                .listRowBackground(AppTheme.card)
+                                .listRowSeparatorTint(AppTheme.border)
+                        }
+                        .listStyle(.insetGrouped)
+                        .scrollContentBackground(.hidden)
+                    }
                 }
             }
-            .navigationTitle("文件")
+            .navigationTitle("文件管理")
+            .navigationBarTitleDisplayMode(.large)
+            .tint(AppTheme.mint)
             .toolbar {
-                Button("上传") { showImporter = true }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        if path != "/" {
+                            path = NSString(string: path).deletingLastPathComponent
+                            if path.isEmpty { path = "/" }
+                            load()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.left")
+                    }
+                    .disabled(path == "/" || path.isEmpty)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showImporter = true } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
             }
+            .task { load() }
             .confirmationDialog(
                 Text(selected?.name ?? ""),
                 isPresented: Binding(
@@ -60,8 +89,8 @@ struct FilesView: View {
                     set: { if !$0 { selected = nil } }
                 )
             ) {
-                Button("下载到文件 App") { download() }
-                Button("删除", role: .destructive) { delete() }
+                Button("下载到文件 App", systemImage: "square.and.arrow.down") { download() }
+                Button("删除", role: .destructive, systemImage: "trash") { delete() }
                 Button("取消", role: .cancel) {}
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
@@ -89,6 +118,86 @@ struct FilesView: View {
                     model.notify(error.localizedDescription)
                 }
             }
+        }
+    }
+
+    private var pathBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "folder.circle.fill")
+                .font(.title3)
+                .foregroundStyle(AppTheme.mint)
+            TextField("设备路径", text: $path)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .font(.system(.footnote, design: .monospaced))
+                .textFieldStyle(.plain)
+                .onSubmit(load)
+            Button {
+                load()
+            } label: {
+                Image(systemName: "arrow.right.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(AppTheme.blue)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppTheme.card, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+    }
+
+    private func fileRow(_ file: RemoteFile) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill((file.isDirectory ? Color.orange : AppTheme.blue).opacity(0.15))
+                Image(systemName: file.isDirectory ? "folder.fill" : fileIcon(for: file.name))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(file.isDirectory ? .orange : AppTheme.blue)
+            }
+            .frame(width: 36, height: 36)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(file.name)
+                    .font(.footnote.weight(.medium))
+                    .lineLimit(1)
+                Text(file.isDirectory ? "目录" : "\(file.size) 字节")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if file.isDirectory {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func fileIcon(for name: String) -> String {
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "png", "jpg", "jpeg", "gif", "webp": return "photo"
+        case "mp4", "mkv", "avi", "mov": return "film"
+        case "mp3", "wav", "m4a", "ogg": return "music.note"
+        case "apk": return "app.badge"
+        case "txt", "log", "json", "xml": return "doc.text"
+        case "zip", "rar", "7z", "tar", "gz": return "doc.zipper"
+        default: return "doc.fill"
+        }
+    }
+
+    private func open(_ file: RemoteFile) {
+        if file.isDirectory {
+            path = file.path
+            load()
+        } else {
+            selected = file
         }
     }
 
@@ -124,7 +233,7 @@ struct FilesView: View {
     private func delete() {
         guard let file = selected else { return }
         selected = nil
-        model.run("rm -f \"\(file.path)\"", success: "已删除") 
+        model.run("rm -f \"\(file.path)\"", success: "已删除")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { load() }
     }
 }

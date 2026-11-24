@@ -18,18 +18,26 @@ struct ContentView: View {
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape.fill") }
         }
+        .tint(AppTheme.mint)
         .overlay(alignment: .bottom) {
             if !model.toast.isEmpty {
-                Text(model.toast)
-                    .font(.footnote)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 72)
-                    .transition(.opacity)
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(AppTheme.mint)
+                    Text(model.toast)
+                        .font(.footnote.weight(.medium))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 78)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut, value: model.toast)
+        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: model.toast)
     }
 }
 
@@ -45,154 +53,298 @@ struct ConnectionView: View {
     private struct InfoKey: Identifiable {
         let title: String
         let key: String
+        let icon: String
         var id: String { key }
     }
 
     private let infoKeys: [InfoKey] = [
-        InfoKey(title: "设备型号", key: "ro.product.model"),
-        InfoKey(title: "品牌", key: "ro.product.brand"),
-        InfoKey(title: "设备名称", key: "ro.product.device"),
-        InfoKey(title: "系统版本", key: "ro.build.version.release"),
-        InfoKey(title: "SDK", key: "ro.build.version.sdk"),
-        InfoKey(title: "序列号", key: "ro.serialno"),
+        InfoKey(title: "型号", key: "ro.product.model", icon: "iphone"),
+        InfoKey(title: "品牌", key: "ro.product.brand", icon: "building.2"),
+        InfoKey(title: "设备名", key: "ro.product.device", icon: "deviceshape"),
+        InfoKey(title: "安卓版本", key: "ro.build.version.release", icon: "square.stack.3d.up"),
+        InfoKey(title: "SDK", key: "ro.build.version.sdk", icon: "chevron.left.forwardslash.chevron.right"),
+        InfoKey(title: "序列号", key: "ro.serialno", icon: "number"),
+    ]
+
+    private let quickControls: [(String, String, String)] = [
+        ("电源", "power", "input keyevent 26"),
+        ("Home", "house.fill", "input keyevent 3"),
+        ("返回", "arrow.left", "input keyevent 4"),
+        ("最近任务", "square.on.square", "input keyevent 187"),
+        ("截图", "camera.fill", ""),
+        ("音量+", "speaker.wave.2.fill", "input keyevent 24"),
     ]
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("连接") {
-                    TextField("设备 IP，例如 192.168.1.20", text: $model.host)
-                        .textContentType(.none)
-                        .keyboardType(.decimalPad)
-                        .autocapitalization(.none)
-                    TextField("端口", text: $model.port)
-                        .keyboardType(.numberPad)
-                    HStack {
-                        Button(action: model.connect) {
-                            Label("连接", systemImage: "wifi")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(model.isConnected)
-                        Button("断开") { model.disconnect() }
-                            .disabled(!model.isConnected)
-                    }
-                    HStack(spacing: 6) {
-                        Image(systemName: model.isConnected ? "checkmark.circle.fill" : "circle")
-                        Text(model.status)
-                    }
-                    .foregroundStyle(model.isConnected ? .green : .secondary)
-                    .font(.footnote)
-                    if !model.banner.isEmpty {
-                        Text(model.banner).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Button("开启无线 ADB 的说明") { showHelp = true }
-                        .font(.footnote)
-                }
+            ScrollView {
+                VStack(spacing: 16) {
+                    connectionCard
 
-                if model.isConnected {
-                    Section("设备信息") {
-                        Button("刷新") { model.refreshInfo() }
-                        ForEach(infoKeys) { item in
-                            HStack {
-                                Text(item.title).foregroundStyle(.secondary)
-                                Spacer()
-                                Text(model.deviceInfo[item.key] ?? "—").textSelection(.enabled)
-                            }
-                            .font(.footnote)
-                        }
+                    if model.isConnected {
+                        infoCard
+                        controlsCard
+                        displayCard
+                        rebootCard
                     }
 
-                    Section("快捷控制") {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
-                            controlButton("电源", "power") { model.run("input keyevent 26") }
-                            controlButton("Home", "house") { model.run("input keyevent 3") }
-                            controlButton("返回", "arrow.left") { model.run("input keyevent 4") }
-                            controlButton("最近任务", "square.on.square") { model.run("input keyevent 187") }
-                            controlButton("截图", "camera") { takeScreenshot() }
-                            controlButton("音量+", "speaker.wave.2") { model.run("input keyevent 24") }
-                        }
-                        .padding(.vertical, 4)
-                    }
-
-                    Section("屏幕与显示") {
-                        HStack {
-                            TextField("亮度 0-255", text: $brightness).keyboardType(.numberPad)
-                            Button("设置") { model.run("settings put system screen_brightness \(brightness)") }
-                        }
-                        HStack {
-                            TextField("DPI", text: $density).keyboardType(.numberPad)
-                            Button("设置") { model.run("wm density \(density)") }
-                        }
-                        HStack {
-                            TextField("分辨率，例如 1080x2400", text: $resolution).autocapitalization(.none)
-                            Button("设置") {
-                                guard !resolution.isEmpty else { model.notify("请输入分辨率"); return }
-                                model.run("wm size \(resolution)")
-                            }
-                        }
-                        HStack {
-                            Button("恢复 DPI") { model.run("wm density reset") }
-                            Button("恢复分辨率") { model.run("wm size reset") }
-                        }
-                        HStack {
-                            Button("自动旋转") { model.run("settings put system accelerometer_rotation 1") }
-                            Button("固定竖屏") {
-                                model.run("settings put system accelerometer_rotation 0; settings put system user_rotation 0")
-                            }
-                        }
-                    }
-
-                    Section("重启") {
-                        HStack {
-                            Button("系统") { model.run("reboot", success: "已发送重启命令") }
-                            Button("Recovery") { model.run("reboot recovery", success: "已发送重启命令") }
-                            Button("Bootloader") { model.run("reboot bootloader", success: "已发送重启命令") }
-                        }
+                    if !model.history.isEmpty {
+                        historyCard
                     }
                 }
-
-                if !model.history.isEmpty {
-                    Section("连接记录") {
-                        ForEach(model.history) { record in
-                            Button("\(record.host):\(record.port)") {
-                                model.host = record.host
-                                model.port = String(record.port)
-                            }
-                        }
-                    }
+                .padding(16)
+            }
+            .appCanvas()
+            .navigationTitle("ADB 助手")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                Button {
+                    showHelp = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
                 }
             }
-            .navigationTitle("ADB 助手")
             .sheet(isPresented: $showHelp) { ConnectionHelpView() }
             .sheet(isPresented: $showScreenshot) {
                 NavigationStack {
-                    Image(uiImage: screenshot ?? UIImage())
-                        .resizable()
-                        .scaledToFit()
-                        .navigationTitle("截图")
-                        .toolbar {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("保存") { saveScreenshot() }
-                            }
-                            ToolbarItem(placement: .navigationBarLeading) {
-                                Button("关闭") { showScreenshot = false }
-                            }
+                    ZStack {
+                        AppTheme.ink.ignoresSafeArea()
+                        Image(uiImage: screenshot ?? UIImage())
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .navigationTitle("设备截图")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("关闭") { showScreenshot = false }
                         }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("保存") { saveScreenshot() }
+                        }
+                    }
                 }
             }
         }
     }
 
-    private func controlButton(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.title3)
-                Text(title).font(.caption)
+    private var connectionCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AppTheme.accentGradient)
+                    Image(systemName: "link.circle.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 50, height: 50)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("无线 ADB 连接")
+                        .font(.headline)
+                    Text("IP + 端口，需在同一局域网")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                StatusPill(connected: model.isConnected, text: model.isConnected ? "已连接" : "未连接")
             }
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "network")
+                        .foregroundStyle(AppTheme.mint)
+                    TextField("设备 IP，例如 192.168.1.20", text: $model.host)
+                        .textContentType(.none)
+                        .keyboardType(.decimalPad)
+                        .autocapitalization(.none)
+                        .font(.subheadline.monospacedDigit())
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                HStack(spacing: 10) {
+                    Image(systemName: "number")
+                        .foregroundStyle(AppTheme.blue)
+                    TextField("端口", text: $model.port)
+                        .keyboardType(.numberPad)
+                        .font(.subheadline.monospacedDigit())
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    model.connect()
+                } label: {
+                    Label(model.isConnected ? "连接中…" : "连接设备", systemImage: "wifi")
+                }
+                .buttonStyle(GradientButtonStyle())
+                .disabled(model.isConnected)
+
+                Button {
+                    model.disconnect()
+                } label: {
+                    Label("断开", systemImage: "circle.slash")
+                }
+                .buttonStyle(SoftButtonStyle())
+                .disabled(!model.isConnected)
+            }
+
+            if !model.banner.isEmpty {
+                Text(model.banner)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
-        .buttonStyle(.plain)
+        .appCard(padding: 16)
+    }
+
+    private var infoCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionHeader(title: "设备信息", systemImage: "iphone", subtitle: model.status)
+                Button {
+                    model.refreshInfo()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.footnote.weight(.semibold))
+                }
+                .buttonStyle(SoftButtonStyle())
+            }
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(infoKeys) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 5) {
+                            Image(systemName: item.icon).font(.caption2)
+                            Text(item.title).font(.caption2)
+                        }
+                        .foregroundStyle(.secondary)
+                        Text(model.deviceInfo[item.key] ?? "—")
+                            .font(.footnote.weight(.semibold))
+                            .lineLimit(1)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+        }
+        .appCard()
+    }
+
+    private var controlsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "快捷控制", systemImage: "bolt.fill", subtitle: "常用按键与截图")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
+                ForEach(quickControls, id: \.0) { item in
+                    Button {
+                        if item.2.isEmpty { takeScreenshot() }
+                        else { model.run(item.2, success: "\(item.0) 已执行") }
+                    } label: {
+                        VStack(spacing: 7) {
+                            Image(systemName: item.1)
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundStyle(AppTheme.mint)
+                                .frame(width: 34, height: 34)
+                                .background(AppTheme.mint.opacity(0.12), in: Circle())
+                            Text(item.0).font(.caption.weight(.medium))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .appCard()
+    }
+
+    private var displayCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "屏幕与显示", systemImage: "display", subtitle: "即时生效，可一键恢复", tint: AppTheme.blue)
+            settingRow(icon: "sun.max", label: "亮度", placeholder: "0-255", text: $brightness) {
+                model.run("settings put system screen_brightness \(brightness)", success: "亮度已设置")
+            }
+            settingRow(icon: "textformat.size", label: "DPI", placeholder: "480", text: $density) {
+                model.run("wm density \(density)", success: "DPI 已设置")
+            }
+            settingRow(icon: "rectangle.on.rectangle", label: "分辨率", placeholder: "1080x2400", text: $resolution) {
+                guard !resolution.isEmpty else { model.notify("请输入分辨率"); return }
+                model.run("wm size \(resolution)", success: "分辨率已设置")
+            }
+            HStack(spacing: 8) {
+                Button("恢复 DPI") { model.run("wm density reset", success: "DPI 已恢复") }
+                Button("恢复分辨率") { model.run("wm size reset", success: "分辨率已恢复") }
+                Button("自动旋转") { model.run("settings put system accelerometer_rotation 1", success: "已开启自动旋转") }
+            }
+            .buttonStyle(SoftButtonStyle())
+        }
+        .appCard()
+    }
+
+    private var rebootCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "重启", systemImage: "arrow.triangle.2.circlepath", subtitle: "命令发送后连接会中断", tint: .orange)
+            HStack(spacing: 8) {
+                Button("系统") { model.run("reboot", success: "已发送重启命令") }
+                Button("Recovery") { model.run("reboot recovery", success: "已发送重启命令") }
+                Button("Bootloader") { model.run("reboot bootloader", success: "已发送重启命令") }
+            }
+            .buttonStyle(SoftButtonStyle())
+        }
+        .appCard()
+    }
+
+    private var historyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "连接记录", systemImage: "clock.arrow.circlepath", subtitle: "点击即可填入地址")
+            FlowLayout(spacing: 8) {
+                ForEach(model.history) { record in
+                    Button {
+                        model.host = record.host
+                        model.port = String(record.port)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "wifi")
+                            Text("\(record.host):\(record.port)")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(AppTheme.blue.opacity(0.12), in: Capsule())
+                        .foregroundStyle(AppTheme.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .appCard()
+    }
+
+    private func settingRow(icon: String, label: String, placeholder: String, text: Binding<String>, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.footnote)
+                .foregroundStyle(AppTheme.blue)
+                .frame(width: 20)
+            Text(label).font(.footnote.weight(.medium))
+            TextField(placeholder, text: text)
+                .multilineTextAlignment(.trailing)
+                .keyboardType(label == "分辨率" ? .asciiCapable : .numberPad)
+                .autocapitalization(.none)
+                .font(.footnote.monospacedDigit())
+                .textFieldStyle(.plain)
+            Button("设置", action: action)
+                .buttonStyle(SoftButtonStyle())
+        }
     }
 
     private func takeScreenshot() {
@@ -229,35 +381,104 @@ struct ConnectionView: View {
     }
 }
 
+// Simple wrapping layout used for connection history chips.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? UIScreen.main.bounds.width
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
 struct ConnectionHelpView: View {
     @Environment(\.dismiss) private var dismiss
+
+    private let steps: [(String, String, String)] = [
+        ("1", "开启开发者选项", "Android 设备进入「设置 → 开发者选项」，打开「USB 调试」。", "gearshape"),
+        ("2", "打开无线 ADB", "部分 ROM 有「无线 ADB」开关（端口通常 5555），或先用电脑执行一次 adb tcpip 5555。", "wifi"),
+        ("3", "同一局域网", "iPhone 与 Android 连接同一个 Wi-Fi，路由器不能开启访客网络或 AP 隔离。", "network"),
+        ("4", "确认授权", "首次连接时手机上会弹出 RSA 指纹确认，勾选「一律允许」后确定。", "hand.raised"),
+    ]
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Group {
-                        Text("工作原理").font(.headline)
-                        Text("本应用通过 Wi-Fi 直连 Android 设备的 ADB 守护进程（TCP 5555），不依赖电脑。手机和 iPhone 必须在同一局域网，且不能开启访客网络隔离或客户端隔离。")
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(AppTheme.accentGradient)
+                        Text("连接前准备")
+                            .font(.title3.weight(.bold))
+                        Text("本应用通过 Wi-Fi 直连 Android 的 ADB 守护进程（TCP 5555），不需要电脑，也不需要越狱。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                    Group {
-                        Text("在 Android 上开启").font(.headline)
-                        Text("开发者选项 → 开启「USB 调试」。部分系统（如 MIUI、ColorOS）有「无线 ADB」开关，打开后端口通常是 5555。Android 11+ 的「无线调试」使用动态端口和配对码，本应用暂不支持该配对方式。")
-                        Text("如果设备只开启了 USB 调试，可先用电脑执行一次 adb tcpip 5555 让设备监听 5555 端口。")
+                    .appCard(padding: 16)
+
+                    ForEach(steps, id: \.0) { step in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(step.0)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(AppTheme.accentGradient, in: Circle())
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(step.1).font(.subheadline.weight(.semibold))
+                                Text(step.2).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: step.3).foregroundStyle(AppTheme.mint.opacity(0.8))
+                        }
+                        .appCard()
                     }
-                    Group {
-                        Text("首次连接授权").font(.headline)
-                        Text("连接时手机会弹出「允许 USB 调试吗？」的 RSA 指纹确认，请勾选「一律允许」后确定。之后即可免确认连接。")
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("平台限制", systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.orange)
+                        Text("未越狱 iOS 无法访问 USB 硬件，因此不支持 USB ADB、Fastboot 刷机、scrcpy 实时投屏和 Android 11+ 无线调试配对码配对。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    Group {
-                        Text("不支持的功能").font(.headline)
-                        Text("iOS 未越狱时无法直接访问 USB 设备，因此 USB ADB、Fastboot 刷机、scrcpy 实时投屏、无线调试配对码配对均无法实现。")
-                    }
+                    .appCard()
                 }
-                .font(.body)
-                .padding()
+                .padding(16)
             }
+            .appCanvas()
             .navigationTitle("连接说明")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 Button("完成") { dismiss() }
             }

@@ -41,9 +41,10 @@
 本项目使用 GitHub Actions 的 macOS 云主机编译，**你只需要一个 GitHub 账号**。
 
 - 私有仓库已建好：**https://github.com/YK191/ios-adb-helper**（main 分支，工程已全部推送）。
-- 云端编译已验证成功：Actions 运行 `Build iOS ADB Helper IPA` 会产出 `ADBHelper-unsigned-IPA` Artifact，解压得到 `ADBHelper.ipa`。
+- 云端编译已验证成功：Actions 运行 `Build iOS ADB Helper IPA` 会产出 `ADBHelper-unsigned-IPA` Artifact，**并自动发布到 [Releases](https://github.com/YK191/ios-adb-helper/releases)**（tag `v1.0.0`，同名 IPA 每次构建覆盖更新）。
+- 应用图标已内置（`ADBHelper/Assets.xcassets/AppIcon.appiconset`），可用 `python3 scripts/gen_icon.py` 重新生成（需 Pillow）。
 - 后续改代码后 push 到 main 会自动重新编译。也可以到仓库 `Actions` 页面手动 `Run workflow`。
-- 在 Actions 运行详情页底部的 `Artifacts` 区域下载 ZIP（需要登录 GitHub）。
+- 在 Actions 运行详情页底部的 `Artifacts` 区域下载 ZIP（需要登录 GitHub）；或直接到 Releases 页面下载最新 `ADBHelper.ipa`。
 
 这就是**未签名 IPA**，下一步在 Windows 上用免费 Apple ID 签名安装。
 
@@ -83,11 +84,14 @@ ios-adb-helper/
 │   ├── AdbProtocol.swift        ADB 包协议、TCP 传输、RSA 认证
 │   ├── AdbDevice.swift          设备操作与文件同步
 │   ├── AdbKeyData.swift         生成的 RSA 密钥（勿手改）
+│   ├── Theme.swift              统一视觉风格与复用组件
+│   ├── Assets.xcassets          应用图标
 │   ├── DeviceViewModel.swift    共享状态
 │   ├── Models.swift             数据模型
 │   ├── Info.plist
 │   └── Views/                   各个功能页面
 ├── scripts/gen_adb_key.py       密钥生成脚本
+├── scripts/gen_icon.py          App 图标生成脚本
 ├── project.yml                  XcodeGen 工程描述
 └── .github/workflows/build.yml   云编译配置
 ```

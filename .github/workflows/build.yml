@@ -5,6 +5,9 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -35,9 +38,34 @@ jobs:
           zip -qry ADBHelper.ipa Payload
           ls -lh ADBHelper.ipa
 
-      - name: Upload IPA
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: ADBHelper-unsigned-IPA
           path: build/ADBHelper.ipa
           if-no-files-found: error
+
+      - name: Publish IPA to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v1.0.0"
+          TITLE="ADB Helper 1.0.0 · build ${{ github.run_number }}"
+          NOTES=$(cat <<EOF
+          未签名 IPA，供 Sideloadly / AltStore 等工具用个人 Apple ID 签名安装。
+
+          - 版本：1.0.0（构建 #${{ github.run_number }}）
+          - 提交：${{ github.sha }}
+          - 功能：无线 ADB 连接、Shell、设备控制、应用/文件管理、截图、日志
+          - 注意：免费 Apple ID 签名有效期 7 天，到期需重新签名。
+          EOF
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES"
+            gh release upload "$TAG" build/ADBHelper.ipa --clobber
+          else
+            gh release create "$TAG" build/ADBHelper.ipa \
+              --title "$TITLE" --notes "$NOTES" --latest
+          fi
+          echo "Release: https://github.com/${{ github.repository }}/releases/tag/$TAG"
