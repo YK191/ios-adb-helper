@@ -537,7 +537,7 @@ final class AdbDevice: ObservableObject {
                 Thread.sleep(forTimeInterval: 0.3)
             }
 
-            closeRecordingStream()
+            self.closeRecordingStream()
 
             let data = try self.pullFileSync(recording.remotePath)
             guard !data.isEmpty else {
