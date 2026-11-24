@@ -2,6 +2,20 @@
 
 一个通过 Wi-Fi 连接 Android 设备无线 ADB（TCP 5555）的 iOS 应用。SwiftUI + 原生 ADB 协议实现，**不需要越狱**。
 
+## 界面预览
+
+> 以下图片按应用实际布局与配色整理，用于展示界面结构。
+
+| 设备 | Shell 终端 | 应用管理 |
+| --- | --- | --- |
+| ![设备页](docs/screenshots/01-device.png) | ![终端页](docs/screenshots/02-terminal.png) | ![应用页](docs/screenshots/03-apps.png) |
+
+| 文件管理 | 设置 |
+| --- | --- |
+| ![文件页](docs/screenshots/04-files.png) | ![设置页](docs/screenshots/05-settings.png) |
+
+预览图由 `scripts/gen_screenshots.py` 生成，修改界面样式后可用该脚本重新生成。
+
 ## 功能
 
 | 功能 | 说明 |
@@ -94,6 +108,8 @@ ios-adb-helper/
 │   └── Views/                   各个功能页面
 ├── scripts/gen_adb_key.py       密钥生成脚本
 ├── scripts/gen_icon.py          App 图标生成脚本
+├── scripts/gen_screenshots.py   界面预览图生成脚本
+├── docs/screenshots/            README 界面预览图
 ├── project.yml                  XcodeGen 工程描述
 └── .github/workflows/build.yml   云编译配置
 ```
