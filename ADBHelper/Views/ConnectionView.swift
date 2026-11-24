@@ -424,7 +424,7 @@ struct FlowLayout: Layout {
 struct ConnectionHelpView: View {
     @Environment(\.dismiss) private var dismiss
 
-    private let steps: [(String, String, String)] = [
+    private let steps: [(String, String, String, String)] = [
         ("1", "开启开发者选项", "Android 设备进入「设置 → 开发者选项」，打开「USB 调试」。", "gearshape"),
         ("2", "打开无线 ADB", "部分 ROM 有「无线 ADB」开关（端口通常 5555），或先用电脑执行一次 adb tcpip 5555。", "wifi"),
         ("3", "同一局域网", "iPhone 与 Android 连接同一个 Wi-Fi，路由器不能开启访客网络或 AP 隔离。", "network"),

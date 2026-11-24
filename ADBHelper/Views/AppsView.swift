@@ -82,7 +82,7 @@ struct AppsView: View {
                 Button("冻结 / 停用", systemImage: "snowflake") { act("freeze") }
                 Button("解冻 / 启用", systemImage: "sun.max") { act("unfreeze") }
                 Button("清除数据", systemImage: "trash") { act("clear") }
-                Button("卸载", role: .destructive, systemImage: "square.and.arrow.up") { act("uninstall") }
+                Button("卸载", systemImage: "square.and.arrow.up", role: .destructive) { act("uninstall") }
                 Button("取消", role: .cancel) {}
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in

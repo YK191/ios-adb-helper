@@ -90,7 +90,7 @@ struct FilesView: View {
                 )
             ) {
                 Button("下载到文件 App", systemImage: "square.and.arrow.down") { download() }
-                Button("删除", role: .destructive, systemImage: "trash") { delete() }
+                Button("删除", systemImage: "trash", role: .destructive) { delete() }
                 Button("取消", role: .cancel) {}
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.item]) { result in
