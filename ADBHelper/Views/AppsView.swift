@@ -115,14 +115,45 @@ struct AppsView: View {
         }
     }
 
+    private static let iconPalettes: [(UInt32, UInt32)] = [
+        (0x4F8DF7, 0x36C9C0), (0xF2994A, 0xF2C94C), (0x9B6BEA, 0xE76DD0),
+        (0x2FBF71, 0x8BD450), (0xE5534B, 0xF28B5D), (0x3AA7F2, 0x5B6EE8),
+        (0x00A8A8, 0x3FD0C9), (0xB6794E, 0xE0A76B), (0x706FD3, 0x9799EE),
+        (0xEB5757, 0xF7696B), (0x27A0A6, 0x6FD3C7), (0xC2569D, 0xF08BBE),
+    ]
+
+    /// Stable hash (djb2) so the same package always gets the same colors.
+    private func appColors(for package: String) -> (Color, Color) {
+        var hash: UInt64 = 5381
+        for byte in package.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        let pair = Self.iconPalettes[Int(hash % UInt64(Self.iconPalettes.count))]
+        return (Color(pair.0), Color(pair.1))
+    }
+
+    private func appInitial(for package: String) -> String {
+        let segments = package.split(separator: ".")
+        let last = segments.last.map(String.init) ?? package
+        let character = last.first ?? package.first ?? "A"
+        return String(character).uppercased()
+    }
+
     private func appRow(_ app: AppInfo) -> some View {
-        HStack(spacing: 12) {
+        let colors = appColors(for: app.packageName)
+        let initial = appInitial(for: app.packageName)
+        return HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(AppTheme.accentGradient.opacity(0.85))
-                Text(String(app.packageName.split(separator: ".").last?.prefix(1) ?? "A").uppercased())
+                    .fill(LinearGradient(
+                        colors: [colors.0, colors.1],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                Text(initial)
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
             }
             .frame(width: 38, height: 38)
 
