@@ -136,7 +136,7 @@ final class AdbSocket {
         _ = setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &value, socklen_t(MemoryLayout<timeval>.size))
     }
 
-    func sendPacket(command: UInt32, arg0: UInt32, arg1: UInt32, payload: Data = Data()) throws {
+    func sendPacket(command: UInt32, arg0: UInt32, arg1: UInt32 = 0, payload: Data = Data()) throws {
         var packet = Data()
         adbAppendLE(command, to: &packet)
         adbAppendLE(arg0, to: &packet)

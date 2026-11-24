@@ -44,6 +44,9 @@ def main() -> None:
         encryption_algorithm=serialization.NoEncryption(),
     )
     public = adb_public_key(key)
+    # Keep the trailing NUL required by adb, but write it as a Swift escape
+    # sequence instead of a literal NUL byte in the source file.
+    public_swift = public.decode("utf-8").replace("\x00", "\\0")
 
     out = Path(__file__).resolve().parents[1] / "ADBHelper" / "AdbKeyData.swift"
     out.write_text(
@@ -51,7 +54,7 @@ def main() -> None:
         "// Rotate with: python3 scripts/gen_adb_key.py\n"
         "enum AdbKeyData {\n"
         f'    static let privateKeyBase64 = "{base64.b64encode(private_der).decode()}"\n'
-        f'    static let publicKeyBase64 = "{public.decode()}"\n'
+        f'    static let publicKeyBase64 = "{public_swift}"\n'
         "}\n",
         encoding="utf-8",
     )

@@ -202,7 +202,7 @@ final class AdbDevice: ObservableObject {
     private func openService(_ service: String) throws -> AdbStream {
         try requireConnection()
         let localId = nextLocalId
-        nextLocalId = nextLocalId &+= 1
+        nextLocalId = nextLocalId &+ 1
         if nextLocalId == 0 { nextLocalId = 1 }
 
         try socket.sendPacket(
