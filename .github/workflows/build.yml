@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -54,13 +56,29 @@ jobs:
           BUILD_NUM=${{ github.run_number }}
           TAG="v${VERSION}-b${BUILD_NUM}"
           TITLE="ADB Helper ${VERSION} · build ${BUILD_NUM}"
+
+          # Collect commits since the previous release as the changelog.
+          git fetch --tags --force >/dev/null 2>&1 || true
+          PREV_TAG=$(gh release view --json tagName --jq .tagName 2>/dev/null || true)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %s' 2>/dev/null || true)
+          else
+            CHANGES=$(git log -12 --pretty=format:'- %s' 2>/dev/null || true)
+          fi
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- 常规更新与问题修复"
+          fi
+
           NOTES=$(cat <<EOF
           未签名 IPA，供 Sideloadly / AltStore 等工具用个人 Apple ID 签名安装。
 
           - 版本：${VERSION}（构建 #${BUILD_NUM}）
           - 提交：${{ github.sha }}
-          - 功能：无线 ADB 连接、Shell、设备信息、应用/文件管理、截图与录像
-          - 注意：免费 Apple ID 签名有效期 7 天，到期需重新签名。
+
+          本次更新：
+          ${CHANGES}
+
+          注意：免费 Apple ID 签名有效期 7 天，到期需重新签名。
           EOF
           )
           gh release create "$TAG" build/ADBHelper.ipa \
