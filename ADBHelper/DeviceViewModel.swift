@@ -67,6 +67,19 @@ final class DeviceViewModel: ObservableObject {
             notify("请填写设备 IP 和端口（默认 5555）")
             return
         }
+        connect(host: address, port: portNumber)
+    }
+
+    /// Connect directly using explicit host/port (used by connection history).
+    func connect(host: String, port portNumber: UInt16) {
+        let address = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else {
+            notify("设备地址无效")
+            return
+        }
+        // Keep the form fields in sync with what we actually connect to.
+        self.host = address
+        self.port = String(portNumber)
         status = "正在连接…"
         isConnecting = true
         device.connect(host: address, port: portNumber) { [weak self] result in

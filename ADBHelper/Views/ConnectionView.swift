@@ -120,9 +120,15 @@ struct ConnectionView: View {
                 NavigationStack {
                     ZStack {
                         AppTheme.ink.ignoresSafeArea()
-                        Image(uiImage: screenshot ?? UIImage())
-                            .resizable()
-                            .scaledToFit()
+                        if let image = screenshot {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                        } else {
+                            Text("截图数据无法预览")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .navigationTitle("设备截图")
                     .navigationBarTitleDisplayMode(.inline)
@@ -132,6 +138,7 @@ struct ConnectionView: View {
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button("保存") { saveScreenshot() }
+                                .disabled(screenshot == nil)
                         }
                     }
                 }
@@ -311,12 +318,11 @@ struct ConnectionView: View {
 
     private var historyCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "连接记录", systemImage: "clock.arrow.circlepath", subtitle: "点击即可填入地址")
+            SectionHeader(title: "连接记录", systemImage: "clock.arrow.circlepath", subtitle: "点击直接连接")
             FlowLayout(spacing: 8) {
                 ForEach(model.history) { record in
                     Button {
-                        model.host = record.host
-                        model.port = String(record.port)
+                        model.connect(host: record.host, port: UInt16(record.port) ?? 5555)
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "wifi")
@@ -385,33 +391,50 @@ struct ConnectionView: View {
 
     private func takeScreenshot() {
         guard model.ensureConnected() else { return }
+        model.notify("正在截取屏幕…")
         model.device.screenshot { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let data):
-                    screenshot = UIImage(data: data)
-                    showScreenshot = screenshot != nil
-                    if screenshot == nil { model.notify("截图数据无法解析") }
+                    guard let image = UIImage(data: data) else {
+                        model.notify("截图数据无法解析（\(data.count) 字节）")
+                        return
+                    }
+                    screenshot = image
+                    showScreenshot = true
                 case .failure(let error):
-                    model.notify(error.localizedDescription)
+                    model.notify("截图失败：\(error.localizedDescription)")
                 }
             }
         }
     }
 
     private func saveScreenshot() {
-        guard let image = screenshot else { return }
-        PHPhotoLibrary.requestAuthorization { status in
-            guard status == .authorized || status == .limited else {
-                DispatchQueue.main.async { model.notify("需要相册权限才能保存截图") }
-                return
+        guard let image = screenshot else {
+            model.notify("截图尚未就绪")
+            return
+        }
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                self.writeImageToPhotos(image, allowed: status == .authorized || status == .limited)
             }
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
-            }) { success, error in
-                DispatchQueue.main.async {
-                    model.notify(success ? "截图已保存到相册" : "保存失败：\(error?.localizedDescription ?? "未知错误")")
-                }
+        } else {
+            PHPhotoLibrary.requestAuthorization { status in
+                self.writeImageToPhotos(image, allowed: status == .authorized || status == .limited)
+            }
+        }
+    }
+
+    private func writeImageToPhotos(_ image: UIImage, allowed: Bool) {
+        guard allowed else {
+            DispatchQueue.main.async { model.notify("需要相册权限才能保存截图") }
+            return
+        }
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.creationRequestForAsset(from: image)
+        }) { success, error in
+            DispatchQueue.main.async {
+                model.notify(success ? "截图已保存到相册" : "保存失败：\(error?.localizedDescription ?? "未知错误")")
             }
         }
     }
