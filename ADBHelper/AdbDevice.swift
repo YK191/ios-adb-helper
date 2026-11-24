@@ -436,6 +436,8 @@ final class AdbDevice: ObservableObject {
                 } catch {
                     lastError = error
                     self.closeRecordingStream()
+                    // 清掉这次尝试可能在设备上留下的空文件
+                    _ = try? self.shellText("rm -f \(remote)", timeout: 10)
                     Thread.sleep(forTimeInterval: 0.5)
                 }
             }
