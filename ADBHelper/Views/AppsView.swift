@@ -90,11 +90,12 @@ struct AppsView: View {
                 Button("取消", role: .cancel) {}
                 Button("选择文件") { showImporter = true }
             } message: {
-                Text("会打开系统文件选择器。找到 .apk 文件后，先点一下文件让它打勾，再点右上角的「选择/打开」确认，才会开始安装（不需要先连接设备）。如果列表里没有文件，请先在「文件」App 里把 APK 存到「我的 iPhone」中。")
+                Text("会打开系统文件选择器，点一下 .apk 文件就会自动选中返回，然后开始安装（不需要先连接设备）。如果列表里没有文件，请先在「文件」App 里把 APK 存到「我的 iPhone」中。")
             }
             .sheet(isPresented: $showImporter) {
                 DocumentPicker { url in
                     showImporter = false
+                    model.notify("已选择 \(url.lastPathComponent)")
                     let didAccess = url.startAccessingSecurityScopedResource()
                     model.device.installApk(from: url) { installResult in
                         if didAccess { url.stopAccessingSecurityScopedResource() }

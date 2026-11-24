@@ -59,10 +59,7 @@ struct ShellView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         toolButton("zap", "快捷命令") { showQuick = true }
-                        toolButton("doc.on.doc", "复制") { copyOutput() }
-                        toolButton("clipboard", "粘贴") { paste() }
                         toolButton("trash", "清空") { lines = [] }
-                        toolButton("doc.text.magnifyingglass", "日志") { loadLogcat() }
                         if !commandHistory.isEmpty {
                             Menu {
                                 ForEach(Array(commandHistory.suffix(12)), id: \.self) { item in
@@ -164,31 +161,28 @@ struct ShellView: View {
         .buttonStyle(.plain)
     }
 
-    private func copyOutput() {
-        let all = lines.map(\.text).joined()
-        guard !all.isEmpty else { return }
-        UIPasteboard.general.string = all
-        model.notify("终端内容已复制")
-    }
-
-    private func paste() {
-        guard let text = UIPasteboard.general.string, !text.isEmpty else {
-            model.notify("剪贴板为空")
-            return
-        }
-        command = text
-    }
-
     private var quickCommandSheet: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    commandSection("内置命令", DeviceViewModel.defaultQuickCommands)
-                    if !model.quickCommands.isEmpty {
-                        commandSection("我的命令", model.quickCommands)
+            Group {
+                if model.quickCommands.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "bolt.slash")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.secondary)
+                        Text("还没有快捷命令")
+                            .font(.headline)
+                        Text("到「设置 → 我的快捷命令」添加，添加后这里会同步显示。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        commandSection("我的快捷命令", model.quickCommands)
+                            .padding(16)
                     }
                 }
-                .padding(16)
             }
             .appCanvas()
             .navigationTitle("快捷命令")
@@ -228,21 +222,6 @@ struct ShellView: View {
             }
         }
         .appCard()
-    }
-
-    private func loadLogcat() {
-        guard model.ensureConnected() else { return }
-        lines = [OutputLine(text: "正在读取最近日志…\n", kind: .info)]
-        model.device.logcat(lines: 300) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let text):
-                    lines = [OutputLine(text: text.isEmpty ? "(日志为空)" : text, kind: .result)]
-                case .failure(let error):
-                    lines = [OutputLine(text: "读取失败：\(error.localizedDescription)", kind: .error)]
-                }
-            }
-        }
     }
 
     private func execute() {
