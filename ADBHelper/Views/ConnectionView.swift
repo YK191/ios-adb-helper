@@ -50,7 +50,6 @@ struct ConnectionView: View {
     @State private var brightness = "128"
     @State private var density = "480"
     @State private var resolution = ""
-    @State private var recordSeconds = 60
     @State private var recording: ScreenRecording?
     @State private var elapsed = 0
     @State private var isStopping = false
@@ -88,7 +87,6 @@ struct ConnectionView: View {
 
                     if model.isConnected {
                         infoCard
-                        controlsCard
                         captureCard
                         displayCard
                         rebootCard
@@ -96,6 +94,10 @@ struct ConnectionView: View {
 
                     if !model.history.isEmpty {
                         historyCard
+                    }
+
+                    if model.isConnected {
+                        controlsCard
                     }
                 }
                 .padding(16)
@@ -187,7 +189,10 @@ struct ConnectionView: View {
                 Button {
                     model.connect()
                 } label: {
-                    Label(model.isConnected ? "连接中…" : "连接设备", systemImage: "wifi")
+                    Label(
+                        model.isConnecting ? "连接中…" : (model.isConnected ? "已连接" : "连接设备"),
+                        systemImage: "wifi"
+                    )
                 }
                 .buttonStyle(GradientButtonStyle())
                 .disabled(model.isConnected)
@@ -278,7 +283,7 @@ struct ConnectionView: View {
             SectionHeader(
                 title: "截图与录像",
                 systemImage: "video.fill",
-                subtitle: "可随时停止 · 到时长自动结束 · 无声音",
+                subtitle: "可随时停止 · 无声音",
                 tint: AppTheme.danger
             )
 
@@ -286,55 +291,38 @@ struct ConnectionView: View {
                 Button {
                     takeScreenshot()
                 } label: {
-                    Label("截取屏幕", systemImage: "camera.fill")
+                    Label("截图", systemImage: "camera.fill")
                 }
-                .buttonStyle(GradientButtonStyle())
+                .buttonStyle(SoftButtonStyle())
 
-                Spacer(minLength: 0)
+                if let activeRecording = recording {
+                    Button {
+                        stopRecording(activeRecording)
+                    } label: {
+                        Label(isStopping ? "保存中…" : "停止录像", systemImage: "square.fill")
+                            .foregroundStyle(AppTheme.danger)
+                    }
+                    .buttonStyle(SoftButtonStyle())
+                    .disabled(isStopping)
 
-                if recording != nil {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Circle()
                             .fill(AppTheme.danger)
-                            .frame(width: 8, height: 8)
+                            .frame(width: 7, height: 7)
                         Text(timeString(elapsed))
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(AppTheme.danger)
                     }
-                }
-            }
-
-            HStack(spacing: 10) {
-                Text("最长时长")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Picker("时长", selection: $recordSeconds) {
-                    ForEach([15, 30, 60, 180], id: \.self) { second in
-                        Text("\(second) 秒").tag(second)
+                } else {
+                    Button {
+                        startRecording()
+                    } label: {
+                        Label("录像", systemImage: "video.fill")
                     }
+                    .buttonStyle(SoftButtonStyle())
                 }
-                .pickerStyle(.segmented)
-                .disabled(recording != nil)
-            }
 
-            if let activeRecording = recording {
-                Button {
-                    stopRecording(activeRecording)
-                } label: {
-                    Label(isStopping ? "正在保存…" : "停止录像并保存", systemImage: "square.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.danger)
-                .disabled(isStopping)
-            } else {
-                Button {
-                    startRecording()
-                } label: {
-                    Label("开始录像", systemImage: "video.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(GradientButtonStyle())
+                Spacer(minLength: 0)
             }
         }
         .appCard()
@@ -460,10 +448,6 @@ struct ConnectionView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
             guard recording != nil else { return }
             elapsed += 1
-            if elapsed >= recordSeconds {
-                if let current = recording { stopRecording(current) }
-                return
-            }
             tickRecording()
         }
     }

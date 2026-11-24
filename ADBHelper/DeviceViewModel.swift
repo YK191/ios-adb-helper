@@ -7,6 +7,7 @@ final class DeviceViewModel: ObservableObject {
     @Published var host = ""
     @Published var port = "5555"
     @Published var isConnected = false
+    @Published var isConnecting = false
     @Published var status = "未连接"
     @Published var toast = ""
     @Published var banner = ""
@@ -21,11 +22,16 @@ final class DeviceViewModel: ObservableObject {
            let list = try? JSONDecoder().decode([ConnectionRecord].self, from: data) {
             history = list
         }
+        // 旧版本曾预置 9 条快捷命令；升级后只清空一次，之后完全由用户决定。
+        if !defaults.bool(forKey: "adb.quick.reset.v2") {
+            defaults.removeObject(forKey: "adb.quick")
+            defaults.set(true, forKey: "adb.quick.reset.v2")
+        }
         if let data = defaults.data(forKey: "adb.quick"),
            let list = try? JSONDecoder().decode([QuickCommand].self, from: data) {
             quickCommands = list
         } else {
-            quickCommands = Self.defaultQuickCommands
+            quickCommands = []
         }
     }
 
@@ -62,9 +68,11 @@ final class DeviceViewModel: ObservableObject {
             return
         }
         status = "正在连接…"
+        isConnecting = true
         device.connect(host: address, port: portNumber) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                self.isConnecting = false
                 switch result {
                 case .success(let deviceBanner):
                     self.isConnected = true
@@ -84,6 +92,7 @@ final class DeviceViewModel: ObservableObject {
 
     func disconnect() {
         device.disconnect()
+        isConnecting = false
         isConnected = false
         status = "未连接"
         banner = ""

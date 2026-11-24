@@ -201,7 +201,7 @@ struct ShellView: View {
         commandHistory.append(text)
         if commandHistory.count > 50 { commandHistory.removeFirst() }
         command = ""
-        output = "$ \(text)\n"
+        output += "$ \(text)\n"
         model.device.shell(text) { result in
             DispatchQueue.main.async {
                 switch result {

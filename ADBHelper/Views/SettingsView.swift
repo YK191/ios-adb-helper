@@ -103,7 +103,7 @@ struct SettingsView: View {
             SectionHeader(
                 title: "我的快捷命令",
                 systemImage: "bolt.fill",
-                subtitle: "\(model.quickCommands.count) 条 · 左滑删除"
+                subtitle: "\(model.quickCommands.count) 条 · 点垃圾桶删除"
             )
             if model.quickCommands.isEmpty {
                 Text("还没有自定义命令")
@@ -124,12 +124,20 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                        Spacer(minLength: 0)
+                        Button {
+                            deleteCommand(item)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.danger)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.vertical, 6)
                     .swipeActions {
                         Button(role: .destructive) {
-                            model.quickCommands.removeAll { $0.id == item.id }
-                            model.saveQuickCommands()
+                            deleteCommand(item)
                         } label: {
                             Label("删除", systemImage: "trash")
                         }
@@ -191,6 +199,12 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .appCard()
+    }
+
+    private func deleteCommand(_ item: QuickCommand) {
+        model.quickCommands.removeAll { $0.id == item.id }
+        model.saveQuickCommands()
+        model.notify("已删除快捷命令")
     }
 
     private func addCommand() {

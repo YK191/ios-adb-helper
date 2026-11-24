@@ -35,7 +35,7 @@ private final class SyncChannel {
             arg1: stream.remoteId,
             payload: payload
         )
-        let reply = try device.takePacket()
+        let reply = try device.takePacket(forLocalId: stream.localId)
         guard reply.command == AdbCommand.okay else {
             throw AdbError.device(String(decoding: reply.payload, as: UTF8.self))
         }
@@ -67,7 +67,7 @@ private final class SyncChannel {
                 }
             }
 
-            let packet = try device.takePacket()
+            let packet = try device.takePacket(forLocalId: stream.localId)
             if packet.command == AdbCommand.wrte {
                 try device.socket.sendPacket(
                     command: AdbCommand.okay,
@@ -194,9 +194,29 @@ final class AdbDevice: ObservableObject {
         guard socket.isOpen else { throw AdbError.connection("请先连接设备") }
     }
 
-    fileprivate func takePacket() throws -> AdbPacket {
-        if !pendingPackets.isEmpty { return pendingPackets.removeFirst() }
-        return try socket.readPacket()
+    /// Read a packet, ignoring any packet that belongs to another stream.
+    /// Packets from other streams are kept for their own readers instead of
+    /// being mistaken for an OPEN reply (a common cause of "无法打开服务").
+    fileprivate func takePacket(forLocalId localId: UInt32? = nil) throws -> AdbPacket {
+        while true {
+            if !pendingPackets.isEmpty {
+                if let wanted = localId {
+                    if let index = pendingPackets.firstIndex(where: {
+                        $0.arg1 == wanted || $0.arg0 == wanted
+                    }) {
+                        return pendingPackets.remove(at: index)
+                    }
+                } else {
+                    return pendingPackets.removeFirst()
+                }
+            }
+            let packet = try socket.readPacket()
+            if let wanted = localId, packet.arg1 != wanted, packet.arg0 != wanted {
+                pendingPackets.append(packet)
+                continue
+            }
+            return packet
+        }
     }
 
     // MARK: - Low-level services
@@ -213,21 +233,31 @@ final class AdbDevice: ObservableObject {
             arg1: 0,
             payload: Data((service + "\0").utf8)
         )
-        let reply = try takePacket()
+        let reply = try takePacket(forLocalId: localId)
         if reply.command == AdbCommand.fail {
             throw AdbError.device(String(decoding: reply.payload, as: UTF8.self))
         }
-        guard reply.command == AdbCommand.okay, reply.arg1 == localId else {
-            throw AdbError.protocolError("无法打开服务 \(service)")
+        guard reply.command == AdbCommand.okay else {
+            throw AdbError.protocolError("无法打开服务 \(service)（收到 \(adbName(reply.command))）")
         }
-        return AdbStream(localId: localId, remoteId: reply.arg0)
+        // Standard adbd echoes our id in arg1 and its own id in arg0.
+        // Some ROMs swap them; accept both so every service keeps working.
+        let remoteId: UInt32
+        if reply.arg1 == localId {
+            remoteId = reply.arg0
+        } else if reply.arg0 == localId {
+            remoteId = reply.arg1
+        } else {
+            remoteId = reply.arg0 != 0 ? reply.arg0 : 1
+        }
+        return AdbStream(localId: localId, remoteId: remoteId)
     }
 
     private func closeStream(_ stream: AdbStream) {
         try? socket.sendPacket(command: AdbCommand.clse, arg0: stream.localId, arg1: stream.remoteId)
         socket.setReadTimeout(2)
         for _ in 0..<3 {
-            guard let packet = try? takePacket() else { break }
+            guard let packet = try? takePacket(forLocalId: stream.localId) else { break }
             if packet.command == AdbCommand.clse { break }
             pendingPackets.insert(packet, at: 0)
             break
@@ -248,7 +278,7 @@ final class AdbDevice: ObservableObject {
 
         var output = Data()
         while true {
-            let packet = try takePacket()
+            let packet = try takePacket(forLocalId: stream.localId)
             if packet.command == AdbCommand.wrte {
                 output.append(packet.payload)
                 try socket.sendPacket(
