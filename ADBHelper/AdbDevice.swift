@@ -780,15 +780,26 @@ final class AdbDevice: ObservableObject {
     func pullFile(from remotePath: String, completion: @escaping (Result<URL, Error>) -> Void) {
         perform({
             let data = try self.pullFileSync(remotePath)
+            guard !data.isEmpty else {
+                throw AdbError.device("文件为空或没有读取权限（\(remotePath)）")
+            }
             let directory = try FileManager.default.url(
                 for: .documentDirectory,
                 in: .userDomainMask,
                 appropriateFor: nil,
                 create: true
             )
-            let name = (remotePath as NSString).lastPathComponent
-            let destination = directory.appendingPathComponent(name.isEmpty ? "downloaded.file" : name)
+            var name = (remotePath as NSString).lastPathComponent
+            if name.isEmpty || name == "/" || name == "." || name == ".." {
+                name = "downloaded.file"
+            }
+            // iOS 文件名不允许冒号，Android 则允许，替换掉避免写入失败。
+            name = name.replacingOccurrences(of: ":", with: "_")
+            let destination = directory.appendingPathComponent(name)
             try data.write(to: destination, options: .atomic)
+            guard FileManager.default.fileExists(atPath: destination.path) else {
+                throw AdbError.protocolError("文件写入失败")
+            }
             return destination
         }, completion: completion)
     }

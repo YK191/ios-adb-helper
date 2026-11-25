@@ -71,7 +71,7 @@ struct SettingsView: View {
             Divider().overlay(AppTheme.border)
 
             VStack(spacing: 9) {
-                infoRow(icon: "tag", title: "版本", value: "1.1.5")
+                infoRow(icon: "tag", title: "版本", value: "1.1.6")
                 infoRow(icon: "key.fill", title: "授权方式", value: "RSA 2048 · 首次连接需手机确认")
                 infoRow(icon: "fingerprint", title: "密钥指纹", value: "+6IJs9ePbh2Xs2OpZYVASrfUX2IPyHryESrHqErOzmo=")
             }

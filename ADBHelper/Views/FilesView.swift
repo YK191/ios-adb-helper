@@ -9,6 +9,9 @@ struct FilesView: View {
     @State private var showImporter = false
     @State private var showUploadTip = false
     @State private var isLoading = false
+    @State private var isDownloading = false
+    /// 下载后先落在本 App 沙盒，再交给系统「存储到文件」面板让用户选位置。
+    @State private var exportURL: URL?
 
     private let shortcuts = ["/sdcard", "/sdcard/Download", "/sdcard/DCIM", "/"]
 
@@ -91,6 +94,7 @@ struct FilesView: View {
                 )
             ) {
                 Button("下载到文件 App", systemImage: "square.and.arrow.down") { download() }
+                    .disabled(isDownloading)
                 Button("删除", systemImage: "trash", role: .destructive) { delete() }
                 Button("取消", role: .cancel) {}
             }
@@ -119,6 +123,24 @@ struct FilesView: View {
                             }
                         }
                     }
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { exportURL != nil },
+                set: { if !$0 { exportURL = nil } }
+            )) {
+                if let url = exportURL {
+                    DocumentExporter(
+                        url: url,
+                        onFinish: {
+                            exportURL = nil
+                            model.notify("\(url.lastPathComponent) 已保存到你选择的位置")
+                        },
+                        onCancel: {
+                            exportURL = nil
+                            model.notify("已取消保存；文件仍在「文件 App → 我的 iPhone → ADB 助手」中")
+                        }
+                    )
                 }
             }
         }
@@ -221,13 +243,17 @@ struct FilesView: View {
     private func download() {
         guard let file = selected else { return }
         selected = nil
+        isDownloading = true
+        model.notify("正在下载 \(file.name) …")
         model.device.pullFile(from: file.path) { result in
             DispatchQueue.main.async {
+                isDownloading = false
                 switch result {
                 case .success(let url):
-                    model.notify("已保存到文件 App：\(url.lastPathComponent)")
+                    // 弹系统「存储到文件」面板，用户自己选位置，真正落到文件 App。
+                    exportURL = url
                 case .failure(let error):
-                    model.notify(error.localizedDescription)
+                    model.notify("下载失败：\(error.localizedDescription)")
                 }
             }
         }
