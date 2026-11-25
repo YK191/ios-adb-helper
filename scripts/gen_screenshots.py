@@ -169,43 +169,29 @@ def device():
         text(d, (x + 8, y + 4), k, 9, SUB)
         text(d, (x + 8, y + 16), v, 11, TEXT, True)
 
-    shadow_card(d, (16, 458, 374, 556))
-    section(d, 470, "截图与录像", "可随时停止 · 自动存相册", DANGER, "display")
-    d.rounded_rectangle((30, 510, 112, 540), radius=13, fill=(231, 249, 245))
-    text(d, (71, 525), "截图", 11, MINT, True, "mm")
-    d.rounded_rectangle((122, 510, 204, 540), radius=13, fill=(231, 249, 245))
-    text(d, (163, 525), "录像", 11, MINT, True, "mm")
-
-    shadow_card(d, (16, 570, 374, 762))
-    section(d, 582, "快捷控制", "常用按键与截图", MINT, "bolt")
-    controls = [("电源", "⏻"), ("Home", "⌂"), ("返回", "←"),
-                ("最近任务", "□"), ("截图", "◎"), ("音量+", "♪")]
-    for i, (label, _) in enumerate(controls):
-        x = 30 + (i % 3) * 112
-        y = 626 + (i // 3) * 64
-        d.rounded_rectangle((x, y, x + 102, y + 55), radius=11, fill=(247, 250, 252))
-        cx, cy = x + 51, y + 21
-        if i == 0:  # power
-            d.arc((cx - 9, cy - 9, cx + 9, cy + 9), 40, 320, fill=MINT, width=2)
-            d.line((cx, cy - 12, cx, cy - 1), fill=MINT, width=2)
-        elif i == 1:  # home
-            d.polygon([(cx, cy - 11), (cx - 11, cy - 1), (cx + 11, cy - 1)], fill=MINT)
-            d.rectangle((cx - 7, cy - 1, cx + 7, cy + 10), fill=MINT)
-        elif i == 2:  # back
-            d.line((cx + 9, cy, cx - 9, cy), fill=MINT, width=2)
-            d.line((cx - 9, cy, cx - 2, cy - 6), fill=MINT, width=2)
-            d.line((cx - 9, cy, cx - 2, cy + 6), fill=MINT, width=2)
-        elif i == 3:  # recents
-            d.rectangle((cx - 10, cy - 8, cx + 2, cy + 4), outline=MINT, width=2)
-            d.rectangle((cx - 2, cy - 2, cx + 10, cy + 10), outline=MINT, width=2)
-        elif i == 4:  # camera
-            d.rounded_rectangle((cx - 11, cy - 7, cx + 11, cy + 9), radius=3, outline=MINT, width=2)
-            d.ellipse((cx - 4, cy - 3, cx + 4, cy + 5), outline=MINT, width=2)
-        else:  # volume+
-            d.polygon([(cx - 10, cy - 4), (cx - 5, cy - 4), (cx, cy - 9), (cx, cy + 9), (cx - 5, cy + 4), (cx - 10, cy + 4)], fill=MINT)
-            d.line((cx + 4, cy, cx + 12, cy), fill=MINT, width=2)
-            d.line((cx + 8, cy - 4, cx + 8, cy + 4), fill=MINT, width=2)
-        text(d, (x + 51, y + 40), label, 10, TEXT, False, "mm")
+    shadow_card(d, (16, 458, 374, 620))
+    section(d, 470, "快捷控制", "Home · 返回 · 截图 · 录像", MINT, "bolt")
+    controls = [("Home", "home"), ("返回", "back"), ("截图", "camera"), ("录像", "video")]
+    for i, (label, kind) in enumerate(controls):
+        x = 30 + (i % 4) * 84
+        y = 520
+        d.rounded_rectangle((x, y, x + 76, y + 74), radius=11, fill=(247, 250, 252))
+        cx, cy = x + 38, y + 26
+        tint = DANGER if kind == "video" else MINT
+        if kind == "home":
+            d.polygon([(cx, cy - 11), (cx - 11, cy - 1), (cx + 11, cy - 1)], fill=tint)
+            d.rectangle((cx - 7, cy - 1, cx + 7, cy + 10), fill=tint)
+        elif kind == "back":
+            d.line((cx + 9, cy, cx - 9, cy), fill=tint, width=2)
+            d.line((cx - 9, cy, cx - 2, cy - 6), fill=tint, width=2)
+            d.line((cx - 9, cy, cx - 2, cy + 6), fill=tint, width=2)
+        elif kind == "camera":
+            d.rounded_rectangle((cx - 11, cy - 7, cx + 11, cy + 9), radius=3, outline=tint, width=2)
+            d.ellipse((cx - 4, cy - 3, cx + 4, cy + 5), outline=tint, width=2)
+        else:  # video
+            d.rounded_rectangle((cx - 11, cy - 8, cx + 8, cy + 8), radius=3, fill=tint)
+            d.polygon([(cx + 8, cy - 2), (cx + 14, cy), (cx + 8, cy + 2)], fill=tint)
+        text(d, (x + 38, y + 56), label, 9, tint, True, "mm")
     save(img, "01-device.png")
 
 
@@ -223,11 +209,11 @@ def terminal():
     text(d, (326, 144), "ONLINE", 9, (47, 191, 113), True, "mm")
     lines = [
         ("$ getprop ro.product.model", (168, 243, 216)),
-        ("D01", (150, 180, 200)),
+        ("Pixel 7", (150, 180, 200)),
         ("$ pm list packages -3", (168, 243, 216)),
         ("package:com.tencent.mm", (150, 180, 200)),
         ("package:com.autonavi.minimap", (150, 180, 200)),
-        ("package:com.reathin.adbassist", (150, 180, 200)),
+        ("package:com.adbhelper.ios", (150, 180, 200)),
         ("$ wm size", (168, 243, 216)),
         ("Physical size: 1080x2400", (150, 180, 200)),
         ("$ _", (168, 243, 216)),
@@ -312,7 +298,7 @@ def settings():
     text(d, (104, 136), "ADB 助手 for iOS", 16, TEXT, True)
     text(d, (104, 160), "通过 Wi-Fi 管理你的 Android 设备", 10, SUB)
     d.line((30, 208, 360, 208), fill=BORDER, width=1)
-    rows = [("版本", "1.0.0"), ("授权方式", "RSA 2048 · 需手机确认"), ("快捷命令", "自定义")]
+    rows = [("版本", "1.1.7"), ("授权方式", "RSA 2048 · 需手机确认"), ("快捷命令", "自定义")]
     y = 220
     for k, v in rows:
         text(d, (32, y), k, 11, SUB)
@@ -324,19 +310,12 @@ def settings():
     text(d, (195, 366), "还没有自定义命令", 12, SUB, False, "mm")
     d.rounded_rectangle((30, 398, 186, 430), radius=14, fill=MINT)
     text(d, (108, 414), "+ 添加命令", 11, (255, 255, 255), True, "mm")
-    d.rounded_rectangle((196, 398, 360, 430), radius=14, fill=(240, 246, 249))
-    text(d, (278, 414), "恢复默认", 11, SUB, True, "mm")
 
     shadow_card(d, (16, 466, 374, 570))
     section(d, 478, "数据", "仅保存在本机", BLUE, "folder")
     text(d, (34, 522), "清空连接记录（0）", 12, DANGER)
     text(d, (350, 522), "›", 14, SUB, False, "mm")
 
-    shadow_card(d, (16, 584, 374, 756))
-    d.rounded_rectangle((30, 598, 60, 628), radius=9, fill=ORANGE)
-    text(d, (45, 613), "!", 14, (255, 255, 255), True, "mm")
-    text(d, (70, 600), "功能边界", 14, TEXT, True)
-    text(d, (30, 638), "未越狱 iOS 无法访问 USB 硬件，不支持 USB ADB、Fastboot 刷机、scrcpy 实时投屏和无线调试配对码配对。本应用支持局域网无线 ADB（TCP 5555）。", 11, SUB)
     save(img, "05-settings.png")
 
 

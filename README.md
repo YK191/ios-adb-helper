@@ -9,11 +9,11 @@
 | 模块 | 说明 |
 | --- | --- |
 | 无线连接 | 输入 `IP:端口`（默认 5555），RSA 认证，连接记录一键直连 |
-| 设备信息 | 20+ 项只读属性：型号、品牌、硬件平台、内核、SELinux、活动槽、启动验证、存储、安全补丁等 |
-| 快捷控制 | 电源 / Home / 返回 / 最近任务 / 音量、亮度、DPI、分辨率、旋转、重启 |
+| 设备信息 | 22 项只读属性：型号、品牌、设备名、安卓版本、SDK、序列号、制造商、硬件平台、CPU 架构、编译信息、安全补丁、活动槽、启动验证、内核、SELinux、存储等 |
+| 快捷控制 | Home、返回、截图、录像（四个按钮，截图/录像入口都在这里） |
 | Shell 终端 | 任意 `adb shell` 命令、快捷命令、命令与输出分色、可拖选复制 |
 | 应用管理 | 应用列表（含中文名）、搜索、启动、强停、冻结 / 解冻、清数据、卸载、安装 APK（带进度） |
-| 文件管理 | 浏览设备目录（含 `/data` 等系统路径）、上传、下载、删除 |
+| 文件管理 | 浏览设备目录（含 `/data` 等系统路径）、上传、下载到系统「存储到文件」面板自选位置、删除 |
 | 截图 | `exec-out screencap -p` 纯流式取图，**不在被控设备留下任何文件**，预览后可存相册 |
 | 录像 | `screenrecord`，可随时停止；**默认自动保存到相册**，失败时回退到「文件」App |
 
@@ -57,7 +57,7 @@ xcodebuild -project ADBHelper.xcodeproj -scheme ADBHelper \
   -archivePath build/ADBHelper.xcarchive archive
 ```
 
-仓库自带 GitHub Actions（`.github/workflows/build.yml`）：推到 `main` 会自动编译并把 IPA 发到 Releases，tag 形如 `v1.1.4-b25`（版本号 + 构建号），完整保留历史版本，Release 说明里自动带上本次提交记录。
+仓库自带 GitHub Actions（`.github/workflows/build.yml`）：推到 `main` 会自动编译并把 IPA 发到 Releases，tag 形如 `v1.1.7-b28`（版本号 + 构建号），完整保留历史版本，Release 说明里自动带上本次提交记录。
 
 ## 使用前提（Android 端）
 
@@ -73,6 +73,7 @@ xcodebuild -project ADBHelper.xcodeproj -scheme ADBHelper \
 - **截图**走 `exec-out screencap -p`，PNG 数据直接流回 iPhone，不会在被控设备写文件。
 - **录像**用系统自带的 `screenrecord`：跑在一个常开的 adb shell 通道里（`exec screenrecord`），停止时发送 `SIGINT`，让它把 MP4 的 moov 写完再退出，然后通过 sync 协议拉回本机。默认分辨率启动失败会自动降级到 `--size 1280x720`，临时目录不可写会退到 `/sdcard`；拉取完成后**立即删除设备端文件**，下次连接还会清理历史残留。
 - 录像**不含声音**，系统限制单段最长约 180 秒；停止后自动存相册，相册权限被拒时保留在「文件」App。
+- **文件下载**先拉回 App 沙盒，再调起系统「存储到文件」面板，由你选择保存位置；不会偷偷只写在沙盒里。
 - 终端使用只读 `UITextView` 渲染富文本，命令与输出分色，支持长按拖选任意内容复制。
 - 所有 ADB 操作在一条串行队列上跑，多路复用按 `localId` 分发，兼容部分 ROM 的 OKAY 参数顺序差异。
 
@@ -107,7 +108,8 @@ ios-adb-helper/
 │   ├── Models.swift             数据模型
 │   ├── Theme.swift              视觉风格与复用组件
 │   ├── TerminalTextView.swift   可选中的终端文本视图
-│   ├── DocumentPicker.swift     UIKit 文件选择器
+│   ├── DocumentPicker.swift     UIKit 文件导入选择器
+│   ├── DocumentExporter.swift   UIKit 系统「存储到文件」面板
 │   ├── Info.plist
 │   ├── Assets.xcassets          应用图标
 │   └── Views/                   设备、终端、应用、文件、设置页
