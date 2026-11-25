@@ -10,8 +10,6 @@ struct FilesView: View {
     @State private var showUploadTip = false
     @State private var isLoading = false
     @State private var isDownloading = false
-    /// 下载后先落在本 App 沙盒，再交给系统「存储到文件」面板让用户选位置。
-    @State private var exportURL: URL?
 
     private let shortcuts = ["/sdcard", "/sdcard/Download", "/sdcard/DCIM", "/"]
 
@@ -125,24 +123,6 @@ struct FilesView: View {
                     }
                 }
             }
-            .sheet(isPresented: Binding(
-                get: { exportURL != nil },
-                set: { if !$0 { exportURL = nil } }
-            )) {
-                if let url = exportURL {
-                    DocumentExporter(
-                        url: url,
-                        onFinish: {
-                            exportURL = nil
-                            model.notify("\(url.lastPathComponent) 已保存到你选择的位置")
-                        },
-                        onCancel: {
-                            exportURL = nil
-                            model.notify("已取消保存；文件仍在「文件 App → 我的 iPhone → ADB 助手」中")
-                        }
-                    )
-                }
-            }
         }
     }
 
@@ -250,8 +230,8 @@ struct FilesView: View {
                 isDownloading = false
                 switch result {
                 case .success(let url):
-                    // 弹系统「存储到文件」面板，用户自己选位置，真正落到文件 App。
-                    exportURL = url
+                    // 文档目录已在「文件 App → 我的 iPhone → ADB 助手」中可见，直接告知路径。
+                    model.notify("已保存到「文件 App → 我的 iPhone → ADB 助手」：\(url.lastPathComponent)")
                 case .failure(let error):
                     model.notify("下载失败：\(error.localizedDescription)")
                 }

@@ -298,7 +298,7 @@ def settings():
     text(d, (104, 136), "ADB 助手 for iOS", 16, TEXT, True)
     text(d, (104, 160), "通过 Wi-Fi 管理你的 Android 设备", 10, SUB)
     d.line((30, 208, 360, 208), fill=BORDER, width=1)
-    rows = [("版本", "1.1.7"), ("授权方式", "RSA 2048 · 需手机确认"), ("快捷命令", "自定义")]
+    rows = [("版本", "1.1.8"), ("授权方式", "RSA 2048 · 需手机确认"), ("快捷命令", "自定义")]
     y = 220
     for k, v in rows:
         text(d, (32, y), k, 11, SUB)
